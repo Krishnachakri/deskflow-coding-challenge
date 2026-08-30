@@ -159,6 +159,16 @@ function updateUserProfileDisplay() {
   document.getElementById('sbManagerSection').classList.toggle('hidden', !isManager);
   document.getElementById('sbDashboard').classList.toggle('hidden', isCustomer);
   document.getElementById('workloadSection').classList.toggle('hidden', !isManager);
+
+  // Approvals tab & filter option are strictly reserved for MANAGER role
+  const sbIncApp = document.getElementById('sbIncApprovals');
+  if (sbIncApp) sbIncApp.classList.toggle('hidden', !isManager);
+
+  const filterSelect = document.getElementById('ticketFilterSelect');
+  if (filterSelect) {
+    const appOpt = filterSelect.querySelector('option[value="APPROVALS"]');
+    if (appOpt) appOpt.hidden = !isManager;
+  }
 }
 
 // Sidebar Navigation Handler
@@ -834,11 +844,13 @@ async function inspectTicket(ticketId) {
     resCard.classList.add('hidden');
   }
 
-  // Render Internal Work Notes (Strictly Hidden from Customer role)
-  const workNotesPanel = document.getElementById('workNotesContainer');
-  workNotesPanel.classList.toggle('hidden', isCustomer);
+  const isPendingApproval = (ticket.approval_status === 'PENDING');
 
-  if (!isCustomer) {
+  // Render Internal Work Notes (Strictly Hidden from Customer role OR when Pending Manager Approval)
+  const workNotesPanel = document.getElementById('workNotesContainer');
+  workNotesPanel.classList.toggle('hidden', isCustomer || isPendingApproval);
+
+  if (!isCustomer && !isPendingApproval) {
     const workNotesList = document.getElementById('workNotesList');
     workNotesList.innerHTML = (!ticket.workNotes || ticket.workNotes.length === 0)
       ? '<p style="font-size:0.8rem; color:var(--text-muted);">No internal work notes recorded yet.</p>'
@@ -894,21 +906,27 @@ async function inspectTicket(ticketId) {
   const actionsDiv = document.getElementById('modalActionButtons');
   actionsDiv.innerHTML = '';
 
-  if (currentUser.role === 'AGENT' || currentUser.role === 'MANAGER') {
-    if (ticket.state === 'NEW' || ticket.state === 'PENDING_CUSTOMER') {
-      actionsDiv.innerHTML += `<button onclick="submitStateChange('IN_PROGRESS')" class="btn-primary" style="background:var(--deskflow-blue);">Start Work / Respond</button>`;
-    }
-    if (ticket.state === 'NEW' || ticket.state === 'IN_PROGRESS' || ticket.state === 'PENDING_CUSTOMER') {
-      actionsDiv.innerHTML += `<button onclick="openRequestInfoModal()" class="btn-primary" style="background:#d97706;">💬 Request Information</button>`;
-      if (ticket.approval_status !== 'PENDING') {
-        actionsDiv.innerHTML += `<button onclick="openRequestApprovalModal()" class="btn-primary" style="background:#7c3aed;">🛡️ Request Manager Approval</button>`;
+  if (!isPendingApproval) {
+    if (currentUser.role === 'AGENT' || currentUser.role === 'MANAGER') {
+      if (ticket.state === 'NEW' || ticket.state === 'PENDING_CUSTOMER') {
+        actionsDiv.innerHTML += `<button onclick="submitStateChange('IN_PROGRESS')" class="btn-primary" style="background:var(--deskflow-blue);">Start Work / Respond</button>`;
       }
+      if (ticket.state === 'NEW' || ticket.state === 'IN_PROGRESS' || ticket.state === 'PENDING_CUSTOMER') {
+        actionsDiv.innerHTML += `<button onclick="openRequestInfoModal()" class="btn-primary" style="background:#d97706;">💬 Request Information</button>`;
+        if (ticket.approval_status !== 'PENDING') {
+          actionsDiv.innerHTML += `<button onclick="openRequestApprovalModal()" class="btn-primary" style="background:#7c3aed;">🛡️ Request Manager Approval</button>`;
+        }
+      }
+      if (ticket.state === 'IN_PROGRESS' || ticket.state === 'PENDING_CUSTOMER') {
+        actionsDiv.innerHTML += `<button onclick="openResolveModal()" class="btn-primary" style="background:var(--status-normal);">Mark Resolved</button>`;
+      }
+    } else if (currentUser.role === 'CUSTOMER' && ticket.state === 'RESOLVED') {
+      actionsDiv.innerHTML += `<button onclick="submitStateChange('CLOSED')" class="btn-primary" style="background:var(--status-normal);">Confirm & Close</button>`;
     }
-    if (ticket.state === 'IN_PROGRESS' || ticket.state === 'PENDING_CUSTOMER') {
-      actionsDiv.innerHTML += `<button onclick="openResolveModal()" class="btn-primary" style="background:var(--status-normal);">Mark Resolved</button>`;
+  } else {
+    if (!isManager) {
+      actionsDiv.innerHTML = `<div style="font-size:0.83rem; font-weight:600; color:#7c3aed; padding:10px; border:1px solid #c4b5fd; border-radius:6px; background:rgba(139,92,246,0.08); text-align:center;">⏳ Incident is locked awaiting Manager Approval. All work notes, state transitions, and information requests are suspended until manager review.</div>`;
     }
-  } else if (currentUser.role === 'CUSTOMER' && ticket.state === 'RESOLVED') {
-    actionsDiv.innerHTML += `<button onclick="submitStateChange('CLOSED')" class="btn-primary" style="background:var(--status-normal);">Confirm & Close</button>`;
   }
 
   document.getElementById('ticketModal').classList.remove('hidden');

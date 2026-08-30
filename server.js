@@ -447,6 +447,10 @@ app.post('/api/tickets/:id/request-info', (req, res) => {
   const ticket = db.prepare('SELECT * FROM tickets WHERE id = ?').get(req.params.id);
   if (!ticket) return res.status(404).json({ error: 'Ticket not found.' });
 
+  if (ticket.approval_status === 'PENDING' && (!authUser || authUser.role !== 'MANAGER')) {
+    return res.status(400).json({ error: 'LOCKED: Information requests are suspended while ticket is awaiting Manager Approval.' });
+  }
+
   const { simulatedTime } = getSimulatedTime();
 
   // Track first agent response for SLA clock
@@ -599,6 +603,10 @@ app.patch('/api/tickets/:id/state', (req, res) => {
 
   if (!ticket) return res.status(404).json({ error: 'Ticket not found' });
 
+  if (ticket.approval_status === 'PENDING' && (!authUser || authUser.role !== 'MANAGER')) {
+    return res.status(400).json({ error: 'LOCKED: State changes are suspended while ticket is awaiting Manager Approval.' });
+  }
+
   // Strict Lifecycle Transition Rules
   const validTransitions = {
     'NEW': ['IN_PROGRESS', 'PENDING_CUSTOMER'],
@@ -661,6 +669,11 @@ app.post('/api/tickets/:id/work-notes', (req, res) => {
 
   if (verifiedRole === 'CUSTOMER') {
     return res.status(403).json({ error: 'FORBIDDEN: Customer role cannot add internal Work Notes.' });
+  }
+
+  const ticket = db.prepare('SELECT * FROM tickets WHERE id = ?').get(req.params.id);
+  if (ticket && ticket.approval_status === 'PENDING' && (!authUser || authUser.role !== 'MANAGER')) {
+    return res.status(400).json({ error: 'LOCKED: Work notes are suspended while ticket is awaiting Manager Approval.' });
   }
 
   const { note } = req.body;
