@@ -5,233 +5,467 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>DeskFlow - Incident Management Service Desk</title>
   <link rel="stylesheet" href="style.css">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 </head>
 <body>
 
-  <!-- DeskFlow Corporate Header -->
-  <header>
-    <div class="brand-header">
-      <div class="brand-logo">
-        <h1>DeskFlow</h1>
-      </div>
-      <span class="brand-subtitle">Incident Management Service Desk</span>
-    </div>
+  <!-- App Shell Container -->
+  <div class="app-container">
 
-    <div class="header-controls">
-      <!-- Search Input Bar -->
-      <div class="search-box" style="display:flex; align-items:center; gap:6px;">
-        <input type="text" id="searchInput" onkeyup="handleSearchKeyup(event)" placeholder="🔍 Search incidents..." style="padding:6px 12px; border:1px solid var(--border-focus); border-radius:6px; font-size:0.85rem; width:200px;">
-        <button onclick="triggerSearch()" class="btn-demo-action" style="background:var(--deskflow-blue); color:#fff;">Search</button>
+    <!-- Persistent Left Sidebar -->
+    <aside class="sidebar">
+      <div>
+        <!-- ShiftAI-Inspired Brand Header with Geometric Emerald SVG Logo -->
+        <div class="sidebar-brand">
+          <div class="sidebar-brand-icon">
+            <svg width="28" height="28" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M16 2L4 9V23L16 30L28 23V9L16 2Z" stroke="#278f5a" stroke-width="2.5" stroke-linejoin="round"/>
+              <path d="M16 8L9 12V20L16 24L23 20V12L16 8Z" fill="#278f5a" fill-opacity="0.2" stroke="#278f5a" stroke-width="2"/>
+              <path d="M16 13L12 15.5V19.5L16 21.5L20 19.5V15.5L16 13Z" fill="#278f5a"/>
+            </svg>
+          </div>
+          <h1>Desk<span class="brand-accent">Flow</span></h1>
+          <span class="brand-tag">IMS</span>
+        </div>
+
+        <nav class="sidebar-nav">
+          <button id="sbDashboard" class="sidebar-btn active" onclick="navigateSidebar('dashboard')">
+            <span>📊 Dashboard</span>
+          </button>
+
+          <button id="sbCreate" class="sidebar-btn" onclick="navigateSidebar('create')">
+            <span>➕ Raise Incident</span>
+          </button>
+
+          <!-- Dropdown Section: Incidents Queue -->
+          <button onclick="toggleSidebarSection('incidentsQueueList', 'incArrow')" class="sidebar-section-dropdown-btn">
+            <span>📋 INCIDENTS QUEUE</span>
+            <span id="incArrow" style="font-size:0.8rem; font-weight:700;">▾</span>
+          </button>
+          
+          <div id="incidentsQueueList" class="sidebar-dropdown-content">
+            <button id="sbIncAll" class="sidebar-btn sidebar-subitem" onclick="navigateSidebar('queue', 'ALL')">
+              <span>All Incidents</span>
+              <span id="cntAll" class="sidebar-badge">0</span>
+            </button>
+            <button id="sbIncNew" class="sidebar-btn sidebar-subitem" onclick="navigateSidebar('queue', 'NEW')">
+              <span>New</span>
+              <span id="cntNew" class="sidebar-badge">0</span>
+            </button>
+            <button id="sbIncInProgress" class="sidebar-btn sidebar-subitem" onclick="navigateSidebar('queue', 'IN_PROGRESS')">
+              <span>In Progress</span>
+              <span id="cntInProgress" class="sidebar-badge">0</span>
+            </button>
+            <button id="sbIncPending" class="sidebar-btn sidebar-subitem" onclick="navigateSidebar('queue', 'PENDING_CUSTOMER')">
+              <span>Pending Customer</span>
+              <span id="cntPending" class="sidebar-badge">0</span>
+            </button>
+            <button id="sbIncResolved" class="sidebar-btn sidebar-subitem" onclick="navigateSidebar('queue', 'RESOLVED')">
+              <span>Resolved</span>
+              <span id="cntResolved" class="sidebar-badge">0</span>
+            </button>
+            <button id="sbIncClosed" class="sidebar-btn sidebar-subitem" onclick="navigateSidebar('queue', 'CLOSED')">
+              <span>Closed</span>
+              <span id="cntClosed" class="sidebar-badge">0</span>
+            </button>
+            <button id="sbIncAtRisk" class="sidebar-btn sidebar-subitem" onclick="navigateSidebar('queue', 'AT_RISK')">
+              <span style="color:#d97706;">⚠️ At Risk</span>
+              <span id="cntAtRisk" class="sidebar-badge" style="background:#d97706; color:#fff;">0</span>
+            </button>
+            <button id="sbIncOverdue" class="sidebar-btn sidebar-subitem" onclick="navigateSidebar('queue', 'OVERDUE')">
+              <span style="color:#dc2626;">🚨 Overdue</span>
+              <span id="cntOverdue" class="sidebar-badge" style="background:#dc2626; color:#fff;">0</span>
+            </button>
+            <button id="sbIncEscalated" class="sidebar-btn sidebar-subitem" onclick="navigateSidebar('queue', 'ESCALATED')">
+              <span style="color:#7c3aed;">⚡ Escalated</span>
+              <span id="cntEscalated" class="sidebar-badge" style="background:#7c3aed; color:#fff;">0</span>
+            </button>
+          </div>
+
+          <!-- Dropdown Section: Categories -->
+          <button onclick="toggleSidebarSection('categoriesList', 'catArrow')" class="sidebar-section-dropdown-btn">
+            <span>📁 CATEGORIES</span>
+            <span id="catArrow" style="font-size:0.8rem; font-weight:700;">▾</span>
+          </button>
+
+          <div id="categoriesList" class="sidebar-dropdown-content">
+            <button id="sbCatHardware" class="sidebar-btn sidebar-subitem" onclick="navigateCategory('HARDWARE')">
+              <span>💻 Hardware</span>
+            </button>
+            <button id="sbCatSoftware" class="sidebar-btn sidebar-subitem" onclick="navigateCategory('SOFTWARE')">
+              <span>⚙️ Software</span>
+            </button>
+            <button id="sbCatBilling" class="sidebar-btn sidebar-subitem" onclick="navigateCategory('BILLING')">
+              <span>💳 Billing</span>
+            </button>
+            <button id="sbCatOther" class="sidebar-btn sidebar-subitem" onclick="navigateCategory('OTHER')">
+              <span>📦 Other</span>
+            </button>
+          </div>
+
+          <!-- Manager Only Admin Options -->
+          <div id="sbManagerSection" class="hidden">
+            <button onclick="toggleSidebarSection('managerAdminList', 'mgrArrow')" class="sidebar-section-dropdown-btn">
+              <span>⚙️ MANAGER ADMINISTRATION</span>
+              <span id="mgrArrow" style="font-size:0.8rem; font-weight:700;">▾</span>
+            </button>
+            <div id="managerAdminList" class="sidebar-dropdown-content">
+              <button id="sbRules" class="sidebar-btn sidebar-subitem" onclick="navigateSidebar('rules')">
+                <span>⚙️ Routing Rules</span>
+              </button>
+              <button id="sbSlaConfig" class="sidebar-btn sidebar-subitem" onclick="navigateSidebar('sLaconfig')">
+                <span>🛠️ SLA Policy Config</span>
+              </button>
+            </div>
+          </div>
+        </nav>
       </div>
 
-      <!-- Notification Bell -->
-      <div class="notif-box" style="position:relative;">
-        <button onclick="toggleNotificationPanel()" class="btn-demo-action" style="background:#f1f5f9; color:var(--text-main); font-size:0.85rem;">
-          🔔 Notifications <span id="notifBadgeCount" class="badge badge-inc" style="background:var(--deskflow-blue); color:#fff;">0</span>
+      <!-- Sidebar Footer: Notifications & Profile -->
+      <div class="sidebar-footer">
+        <button onclick="toggleNotificationPanel()" class="sidebar-btn" style="position:relative;">
+          <span>🔔 Notifications</span>
+          <span id="notifBadgeCount" class="sidebar-badge" style="background:var(--brand-green); color:#fff;">0</span>
         </button>
-        <div id="notifDropdown" class="context-box hidden" style="position:absolute; right:0; top:36px; width:300px; z-index:200; box-shadow:0 10px 15px -3px rgba(0,0,0,0.1); background:#fff;">
-          <h4 style="margin-bottom:8px; font-size:0.8rem; color:var(--deskflow-blue);">NOTIFICATION LOG</h4>
+
+        <!-- Notification Context Popover -->
+        <div id="notifDropdown" class="context-box hidden" style="position:absolute; left:275px; bottom:80px; width:320px; z-index:400; box-shadow:0 20px 25px -5px rgba(0,0,0,0.2); background:var(--bg-card);">
+          <h4 style="margin-bottom:8px; font-size:0.8rem; color:var(--brand-green);">SYSTEM NOTIFICATIONS LOG</h4>
           <div id="notifList" style="max-height:220px; overflow-y:auto; font-size:0.8rem;"></div>
         </div>
-      </div>
 
-      <!-- Subordinate Demo Time Simulator Bar -->
-      <div class="demo-time-box">
-        <span>⏱️ Demo Time:</span>
-        <span id="simTimeDisplay" class="time-val">--:--</span>
-        <button class="btn-demo-action" onclick="fastForwardTime(1)">+1h</button>
-        <button class="btn-demo-action" onclick="fastForwardTime(4)">+4h</button>
-        <button class="btn-demo-action" onclick="fastForwardTime(16)">+2d</button>
-        <button class="btn-demo-action" onclick="resetTime()" style="background:#fee2e2; color:#dc2626;">Reset</button>
-      </div>
-
-      <!-- Demo Auth Role Switcher -->
-      <div class="role-box">
-        <label for="userRoleSelect">View as:</label>
-        <select id="userRoleSelect" onchange="onRoleChange()">
-          <option value="cust-1">Carol Customer (Customer)</option>
-          <option value="agent-1">Alice Agent (Agent)</option>
-          <option value="agent-2">Dave Agent (Agent)</option>
-          <option value="mgr-1" selected>Bob Manager (Manager)</option>
-        </select>
-      </div>
-    </div>
-  </header>
-
-  <!-- Main Navigation Tabs -->
-  <nav class="nav-tabs">
-    <button id="tabDashboard" class="tab-btn active" onclick="switchNavTab('dashboard')">Dashboard</button>
-    <button id="tabCreate" class="tab-btn" onclick="switchNavTab('create')">Create Incident</button>
-    <button id="tabQueue" class="tab-btn" onclick="switchNavTab('queue')">Incidents Queue</button>
-    <button id="tabRules" class="tab-btn" onclick="switchNavTab('rules')">Routing Rules</button>
-  </nav>
-
-  <!-- Manager Macro Dashboard Metrics Panel -->
-  <section id="managerDashboardSection" class="metrics-grid">
-    <div class="card-metric">
-      <h3>Open Incidents</h3>
-      <div id="metricTotalOpen" class="val">0</div>
-    </div>
-    <div class="card-metric card-atrisk">
-      <h3>At Risk (< 60m SLA)</h3>
-      <div id="metricAtRisk" class="val">0</div>
-    </div>
-    <div class="card-metric card-overdue">
-      <h3>Overdue Incidents</h3>
-      <div id="metricOverdue" class="val">0</div>
-    </div>
-    <div class="card-metric card-escalated">
-      <h3>Auto-Escalated</h3>
-      <div id="metricEscalated" class="val">0</div>
-    </div>
-  </section>
-
-  <!-- Agent Workload Summary (Manager Only) -->
-  <section id="workloadSection" class="panel hidden" style="margin-bottom:20px; padding:16px;">
-    <h3 style="font-size:0.9rem; color:var(--deskflow-blue); margin-bottom:10px;">📊 AGENT ACTIVE WORKLOAD BALANCING</h3>
-    <div id="workloadGrid" style="display:flex; gap:16px;"></div>
-  </section>
-
-  <!-- Create Incident Form Section -->
-  <section id="createTicketSection" class="panel hidden">
-    <div class="panel-header">
-      <h2 class="panel-title">Raise New Incident Ticket</h2>
-    </div>
-
-    <form id="createTicketForm" onsubmit="handleCreateTicket(event)">
-      <div class="form-grid">
-        <div class="field-group" style="grid-column: span 2;">
-          <label>Subject / Incident Title</label>
-          <input type="text" id="ticketTitle" required placeholder="Describe the incident concisely">
-        </div>
-        <div class="field-group">
-          <label>Category</label>
-          <select id="ticketCategory" required>
-            <option value="HARDWARE">Hardware</option>
-            <option value="SOFTWARE" selected>Software</option>
-            <option value="BILLING">Billing</option>
-            <option value="OTHER">Other</option>
-          </select>
-        </div>
-        <div class="field-group">
-          <label>Priority Target</label>
-          <select id="ticketPriority" required>
-            <option value="P1">P1 - Critical</option>
-            <option value="P2" selected>P2 - High</option>
-            <option value="P3">P3 - Medium</option>
-            <option value="P4">P4 - Low</option>
-          </select>
+        <div class="user-profile-box">
+          <div class="user-profile-info">
+            <span id="sbUserName" class="user-name">User Name</span>
+            <span id="sbUserRole" class="user-role">Role</span>
+          </div>
+          <button onclick="handleLogout()" class="btn-demo-action" style="background:var(--border-focus); color:var(--text-main); border:none;">Sign Out</button>
         </div>
       </div>
-      <div class="field-group" style="margin-bottom:20px;">
-        <label>Detailed Description & Symptoms</label>
-        <textarea id="ticketDescription" rows="4" placeholder="Provide background steps, error messages, or workstation details..."></textarea>
+    </aside>
+
+    <!-- Main Workspace Area -->
+    <main class="main-content">
+
+      <!-- ShiftAI-Style Header Controls Bar -->
+      <header>
+        <div>
+          <span class="hero-tag">INCIDENT MANAGEMENT SERVICE DESK INTELLIGENCE</span>
+          <h2 id="mainHeaderTitle" class="header-brand-title">Operational Workspace</h2>
+        </div>
+
+        <div class="header-controls">
+          <!-- ShiftAI-Style Sun Icon Theme Switcher (Matching attached user image) -->
+          <button id="themeToggleBtn" onclick="toggleTheme()" class="btn-theme-toggle-square" title="Switch Theme (Light / Dark)">
+            <span id="themeIcon" style="display:flex; align-items:center; justify-content:center;">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="5"></circle>
+                <line x1="12" y1="1" x2="12" y2="3"></line>
+                <line x1="12" y1="21" x2="12" y2="23"></line>
+                <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+                <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+                <line x1="1" y1="12" x2="3" y2="12"></line>
+                <line x1="21" y1="12" x2="23" y2="12"></line>
+                <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+                <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+              </svg>
+            </span>
+          </button>
+
+          <!-- Demo Time Simulator Bar -->
+          <div class="demo-time-box">
+            <span>⏱️ Demo Time:</span>
+            <span id="simTimeDisplay" class="time-val">--:--</span>
+            <button class="btn-demo-action" onclick="fastForwardTime(1)">+1h</button>
+            <button class="btn-demo-action" onclick="fastForwardTime(4)">+4h</button>
+            <button class="btn-demo-action" onclick="fastForwardTime(24)">+1d</button>
+            <button class="btn-demo-action" onclick="fastForwardTime(48)">+2d</button>
+            <button class="btn-demo-action" onclick="resetTime()" style="background:#fee2e2; color:#dc2626;">Reset</button>
+          </div>
+        </div>
+      </header>
+
+      <!-- Manager Macro Dashboard Metrics Panel -->
+      <section id="managerDashboardSection" class="metrics-grid">
+        <div class="card-metric" onclick="filterQueueByMetric('OPEN')" style="cursor:pointer;" title="Click to view Open Incidents">
+          <h3>Open Incidents</h3>
+          <div id="metricTotalOpen" class="val">0</div>
+        </div>
+        <div class="card-metric card-atrisk" onclick="filterQueueByMetric('AT_RISK')" style="cursor:pointer;" title="Click to view At Risk Incidents">
+          <h3>At Risk (< 60m SLA)</h3>
+          <div id="metricAtRisk" class="val">0</div>
+        </div>
+        <div class="card-metric card-overdue" onclick="filterQueueByMetric('OVERDUE')" style="cursor:pointer;" title="Click to view Overdue Incidents">
+          <h3>Overdue Incidents</h3>
+          <div id="metricOverdue" class="val">0</div>
+        </div>
+        <div class="card-metric card-escalated" onclick="filterQueueByMetric('ESCALATED')" style="cursor:pointer;" title="Click to view Auto-Escalated Incidents">
+          <h3>Auto-Escalated</h3>
+          <div id="metricEscalated" class="val">0</div>
+        </div>
+      </section>
+
+      <!-- Agent Workload Summary (Manager Only) -->
+      <section id="workloadSection" class="panel hidden" style="margin-bottom:20px; padding:16px;">
+        <h3 style="font-size:0.9rem; color:var(--brand-green); margin-bottom:10px;">📊 AGENT ACTIVE WORKLOAD BALANCING</h3>
+        <div id="workloadGrid" style="display:flex; gap:16px;"></div>
+      </section>
+
+      <!-- Create Incident Form Section -->
+      <section id="createTicketSection" class="panel hidden">
+        <div class="panel-header">
+          <h2 class="panel-title">Raise New Incident Ticket</h2>
+        </div>
+
+        <form id="createTicketForm" onsubmit="handleCreateTicket(event)">
+          <div class="form-grid">
+            <div class="field-group" style="grid-column: span 2;">
+              <label>Subject / Incident Title</label>
+              <input type="text" id="ticketTitle" required placeholder="Describe the incident concisely">
+            </div>
+            <div class="field-group">
+              <label>Category</label>
+              <select id="ticketCategory" required>
+                <option value="HARDWARE">Hardware</option>
+                <option value="SOFTWARE" selected>Software</option>
+                <option value="BILLING">Billing</option>
+                <option value="OTHER">Other</option>
+              </select>
+            </div>
+            <div class="field-group">
+              <label>Priority Target</label>
+              <select id="ticketPriority" required>
+                <option value="P1">P1 - Critical</option>
+                <option value="P2" selected>P2 - High</option>
+                <option value="P3">P3 - Medium</option>
+                <option value="P4">P4 - Low</option>
+              </select>
+            </div>
+          </div>
+          <div class="field-group" style="margin-bottom:20px;">
+            <label>Detailed Description & Symptoms</label>
+            <textarea id="ticketDescription" rows="4" placeholder="Provide background steps, error messages, or workstation details..."></textarea>
+          </div>
+
+          <button type="submit" class="btn-primary">Submit Incident (Triggers Auto-Assignment & SLA Clock)</button>
+        </form>
+      </section>
+
+      <!-- Incidents Queue Table Section -->
+      <section id="ticketQueueSection" class="panel">
+        <div class="panel-header">
+          <h2 id="queuePanelTitle" class="panel-title">Incidents Queue</h2>
+          
+          <!-- SEARCH CONTROL LOCATED DIRECTLY BESIDE FILTERS DROPDOWN -->
+          <div class="header-controls" style="display:flex; align-items:center; gap:12px;">
+            <div class="search-box" style="display:flex; align-items:center; gap:6px;">
+              <input type="text" id="searchInput" onkeyup="handleSearchKeyup(event)" placeholder="🔍 Search incidents..." style="padding:6px 12px; border:1px solid var(--border-focus); border-radius:6px; font-size:0.85rem; width:220px;">
+              <button onclick="triggerSearch()" class="btn-demo-action" style="background:var(--brand-green); color:#fff;">Search</button>
+            </div>
+
+            <div style="display:flex; align-items:center; gap:6px;">
+              <label style="font-size:0.82rem; color:var(--text-muted); font-weight:600;">Filters:</label>
+              <select id="ticketFilterSelect" onchange="loadTickets()" style="background:var(--bg-card); border:1px solid var(--border-focus); padding:6px 12px; border-radius:6px; font-size:0.85rem; font-weight:600; color:var(--text-main);">
+                <option value="ALL">All Incidents</option>
+                <option value="OPEN">Open Only</option>
+                <option value="NEW">New</option>
+                <option value="IN_PROGRESS">In Progress</option>
+                <option value="PENDING_CUSTOMER">Pending Customer</option>
+                <option value="RESOLVED">Resolved</option>
+                <option value="CLOSED">Closed</option>
+                <option value="AT_RISK">At Risk Only</option>
+                <option value="OVERDUE">Overdue Only</option>
+                <option value="ESCALATED">Auto-Escalated Only</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th>Incident #</th>
+              <th>Title</th>
+              <th>Category</th>
+              <th>Priority</th>
+              <th>Status</th>
+              <th>Assignee</th>
+              <th>Response SLA Clock</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="ticketsTableBody">
+            <!-- Rendered dynamically -->
+          </tbody>
+        </table>
+      </section>
+
+      <!-- Routing Rules Admin Panel (Manager Role) -->
+      <section id="rulesSection" class="panel hidden">
+        <div class="panel-header">
+          <h2 class="panel-title">⚙️ Incident Auto-Assignment Routing Rules (No-Code Admin)</h2>
+        </div>
+
+        <form id="addRuleForm" onsubmit="handleAddRule(event)" style="margin-bottom:20px; background:var(--sidebar-hover); padding:16px; border-radius:8px; border:1px solid var(--border-subtle);">
+          <h4 style="margin-bottom:12px; font-size:0.85rem; color:var(--brand-green);">Add Routing Rule</h4>
+          <div class="form-grid">
+            <div class="field-group">
+              <label>Category Criteria</label>
+              <select id="ruleCategory">
+                <option value="ALL">ANY Category (*)</option>
+                <option value="HARDWARE">Hardware</option>
+                <option value="SOFTWARE">Software</option>
+                <option value="BILLING">Billing</option>
+                <option value="OTHER">Other</option>
+              </select>
+            </div>
+            <div class="field-group">
+              <label>Priority Criteria</label>
+              <select id="rulePriority">
+                <option value="ALL">ANY Priority (*)</option>
+                <option value="P1">P1 - Critical</option>
+                <option value="P2">P2 - High</option>
+                <option value="P3">P3 - Medium</option>
+                <option value="P4">P4 - Low</option>
+              </select>
+            </div>
+            <div class="field-group">
+              <label>Target Agent / Mode</label>
+              <select id="ruleTargetAgent">
+                <option value="agent-1">Alice Agent</option>
+                <option value="agent-2">Dave Agent</option>
+              </select>
+            </div>
+            <div class="field-group" style="flex-direction:row; align-items:center; gap:8px;">
+              <input type="checkbox" id="ruleWorkloadBalance" style="width:auto;">
+              <label for="ruleWorkloadBalance" style="font-weight:normal;">Enable Workload Balancing</label>
+            </div>
+            <div class="field-group" style="justify-content:flex-end;">
+              <button type="submit" class="btn-primary" style="padding:8px 16px;">Save Rule</button>
+            </div>
+          </div>
+        </form>
+
+        <table>
+          <thead>
+            <tr>
+              <th>Order</th>
+              <th>Category Criteria</th>
+              <th>Priority Criteria</th>
+              <th>Target Agent</th>
+              <th>Mode</th>
+              <th>Status</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="rulesTableBody">
+            <!-- Rendered dynamically -->
+          </tbody>
+        </table>
+      </section>
+
+      <!-- Manager SLA Configuration Panel (Manager Role Only) -->
+      <section id="slaConfigSection" class="panel hidden">
+        <div class="panel-header">
+          <h2 class="panel-title">🛠️ Service Level Agreement (SLA) Policy Configuration</h2>
+        </div>
+
+        <form id="slaConfigForm" onsubmit="handleSaveSlaConfig(event)" style="background:var(--sidebar-hover); padding:20px; border-radius:8px; border:1px solid var(--border-subtle);">
+          <div class="form-grid">
+            <div class="field-group">
+              <label>Response SLA Target (Hours)</label>
+              <input type="number" id="slaResponseHours" min="0.5" step="0.5" required>
+            </div>
+            <div class="field-group">
+              <label>Resolution SLA Target (Hours)</label>
+              <input type="number" id="slaResolutionHours" min="1" step="1" required>
+            </div>
+            <div class="field-group">
+              <label>At-Risk SLA Threshold (Minutes)</label>
+              <input type="number" id="slaAtRiskMins" min="5" step="5" required>
+            </div>
+            <div class="field-group">
+              <label>Business Hours Window Start</label>
+              <select id="slaBizStart">
+                <option value="8">08:00 AM</option>
+                <option value="9" selected>09:00 AM</option>
+                <option value="10">10:00 AM</option>
+              </select>
+            </div>
+            <div class="field-group">
+              <label>Business Hours Window End</label>
+              <select id="slaBizEnd">
+                <option value="16">04:00 PM (16:00)</option>
+                <option value="17" selected>05:00 PM (17:00)</option>
+                <option value="18">06:00 PM (18:00)</option>
+              </select>
+            </div>
+          </div>
+          <div style="margin-top:16px; display:flex; justify-content:flex-end;">
+            <button type="submit" class="btn-primary">Save SLA Policy Configuration</button>
+          </div>
+        </form>
+      </section>
+
+    </main>
+
+  </div>
+
+  <!-- Demo Authentication Overlay Modal -->
+  <div id="loginModal" class="login-overlay hidden">
+    <div class="login-card">
+      <div class="login-header">
+        <div style="display:flex; justify-content:center; margin-bottom:10px;">
+          <svg width="40" height="40" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M16 2L4 9V23L16 30L28 23V9L16 2Z" stroke="#278f5a" stroke-width="2.5" stroke-linejoin="round"/>
+            <path d="M16 8L9 12V20L16 24L23 20V12L16 8Z" fill="#278f5a" fill-opacity="0.25" stroke="#278f5a" stroke-width="2"/>
+            <path d="M16 13L12 15.5V19.5L16 21.5L20 19.5V15.5L16 13Z" fill="#278f5a"/>
+          </svg>
+        </div>
+        <h2>DeskFlow IMS</h2>
+        <p>Incident Management Service Desk Sign In</p>
       </div>
 
-      <button type="submit" class="btn-primary">Submit Incident (Triggers Auto-Assignment & SLA Clock)</button>
-    </form>
-  </section>
+      <form id="loginForm" onsubmit="handleLoginSubmit(event)">
+        <div class="field-group" style="margin-bottom:12px;">
+          <label>Username or Email</label>
+          <input type="text" id="loginUsername" required placeholder="e.g. customer1, agent1, manager1">
+        </div>
+        <div class="field-group" style="margin-bottom:20px;">
+          <label>Password</label>
+          <input type="password" id="loginPassword" required placeholder="••••••••">
+        </div>
 
-  <!-- Incidents Queue Table Section -->
-  <section id="ticketQueueSection" class="panel">
-    <div class="panel-header">
-      <h2 id="queuePanelTitle" class="panel-title">Incidents Queue</h2>
-      <div class="header-controls">
-        <label style="font-size:0.82rem; color:var(--text-muted);">Filter:</label>
-        <select id="ticketFilterSelect" onchange="loadTickets()" style="background:#fff; border:1px solid var(--border-focus); padding:5px 10px; border-radius:6px; font-size:0.85rem;">
-          <option value="ALL">All Incidents</option>
-          <option value="OPEN">Open Only</option>
-          <option value="AT_RISK">At Risk Only</option>
-          <option value="OVERDUE">Overdue Only</option>
-        </select>
+        <button type="submit" class="btn-primary" style="width:100%;">Sign In</button>
+      </form>
+
+      <div style="margin-top:24px; border-top:1px solid var(--border-subtle); padding-top:16px;">
+        <p style="font-size:0.78rem; text-align:center; color:var(--text-muted); font-weight:600;">QUICK DEMO LOGIN (LOCAL ROLES)</p>
+        <div class="quick-login-grid">
+          <button onclick="quickLogin('cust-1')" class="btn-quick-login">Carol Customer 1</button>
+          <button onclick="quickLogin('cust-2')" class="btn-quick-login">Charlie Customer 2</button>
+          <button onclick="quickLogin('agent-1')" class="btn-quick-login">Alice Agent 1</button>
+          <button onclick="quickLogin('agent-2')" class="btn-quick-login">Dave Agent 2</button>
+          <button onclick="quickLogin('mgr-1')" class="btn-quick-login" style="grid-column: span 2;">Bob Manager</button>
+        </div>
       </div>
     </div>
+  </div>
 
-    <table>
-      <thead>
-        <tr>
-          <th>Incident #</th>
-          <th>Title</th>
-          <th>Category</th>
-          <th>Priority</th>
-          <th>Status</th>
-          <th>Assignee</th>
-          <th>Response SLA Clock</th>
-          <th>Actions</th>
-        </tr>
-      </thead>
-      <tbody id="ticketsTableBody">
-        <!-- Rendered dynamically -->
-      </tbody>
-    </table>
-  </section>
-
-  <!-- Routing Rules Admin Panel (Manager Role) -->
-  <section id="rulesSection" class="panel hidden">
-    <div class="panel-header">
-      <h2 class="panel-title">⚙️ Incident Auto-Assignment Routing Rules (No-Code Admin)</h2>
-    </div>
-
-    <!-- Add Rule Form -->
-    <form id="addRuleForm" onsubmit="handleAddRule(event)" style="margin-bottom:20px; background:#f8fafc; padding:16px; border-radius:8px; border:1px solid var(--border-subtle);">
-      <h4 style="margin-bottom:12px; font-size:0.85rem; color:var(--deskflow-blue);">Add Routing Rule</h4>
-      <div class="form-grid">
-        <div class="field-group">
-          <label>Category Criteria</label>
-          <select id="ruleCategory">
-            <option value="ALL">ANY Category (*)</option>
-            <option value="HARDWARE">Hardware</option>
-            <option value="SOFTWARE">Software</option>
-            <option value="BILLING">Billing</option>
-            <option value="OTHER">Other</option>
-          </select>
-        </div>
-        <div class="field-group">
-          <label>Priority Criteria</label>
-          <select id="rulePriority">
-            <option value="ALL">ANY Priority (*)</option>
-            <option value="P1">P1 - Critical</option>
-            <option value="P2">P2 - High</option>
-            <option value="P3">P3 - Medium</option>
-            <option value="P4">P4 - Low</option>
-          </select>
-        </div>
-        <div class="field-group">
-          <label>Target Agent / Mode</label>
-          <select id="ruleTargetAgent">
-            <option value="agent-1">Alice Agent</option>
-            <option value="agent-2">Dave Agent</option>
-          </select>
-        </div>
-        <div class="field-group" style="flex-direction:row; align-items:center; gap:8px;">
-          <input type="checkbox" id="ruleWorkloadBalance" style="width:auto;">
-          <label for="ruleWorkloadBalance" style="font-weight:normal;">Enable Workload Balancing</label>
-        </div>
-        <div class="field-group" style="justify-content:flex-end;">
-          <button type="submit" class="btn-primary" style="padding:8px 16px;">Save Rule</button>
-        </div>
+  <!-- Request Information Modal for Agent -->
+  <div id="requestInfoModal" class="modal-overlay hidden" style="z-index:200;">
+    <div class="login-card" style="max-width:500px;">
+      <h3 style="color:var(--brand-green); margin-bottom:10px;">💬 Request Additional Information</h3>
+      <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom:14px;">Specify the details or evidence required from the customer. Ticket will transition to <strong>Pending Customer</strong>.</p>
+      
+      <textarea id="requestInfoInput" rows="4" style="width:100%; padding:10px; border:1px solid var(--border-focus); border-radius:6px; font-size:0.9rem;" placeholder="e.g. Please provide the exact error message and the time the VPN connection failed..."></textarea>
+      
+      <div style="margin-top:16px; display:flex; justify-content:flex-end; gap:10px;">
+        <button onclick="closeRequestInfoModal()" class="btn-demo-action" style="padding:8px 16px;">Cancel</button>
+        <button onclick="submitRequestInfo()" class="btn-primary" style="background:#d97706; padding:8px 16px;">Send Request to Customer</button>
       </div>
-    </form>
-
-    <!-- Rules Table -->
-    <table>
-      <thead>
-        <tr>
-          <th>Order</th>
-          <th>Category Criteria</th>
-          <th>Priority Criteria</th>
-          <th>Target Agent</th>
-          <th>Mode</th>
-          <th>Status</th>
-          <th>Action</th>
-        </tr>
-      </thead>
-      <tbody id="rulesTableBody">
-        <!-- Rendered dynamically -->
-      </tbody>
-    </table>
-  </section>
+    </div>
+  </div>
 
   <!-- IMS Operational Workspace Modal -->
   <div id="ticketModal" class="modal-overlay hidden">
@@ -239,7 +473,7 @@
       <div class="workspace-header">
         <div>
           <span class="badge badge-inc">INCIDENT</span>
-          <strong id="modalTicketId" style="font-size:1.1rem; color:var(--deskflow-blue); margin-left:8px;">INC0000001</strong>
+          <strong id="modalTicketId" style="font-size:1.1rem; color:var(--brand-green); margin-left:8px;">INC0000001</strong>
           <span id="modalTicketTitle" style="font-size:1rem; font-weight:600; margin-left:8px; color:var(--text-main);">Incident Title</span>
         </div>
         <button onclick="closeModal()" style="background:none; border:none; color:var(--text-muted); font-size:1.4rem; cursor:pointer;">✕</button>
@@ -248,32 +482,47 @@
       <div class="workspace-body">
         <!-- Main Left Workspace -->
         <div class="workspace-left">
-          <!-- Description -->
-          <div class="context-box" style="background:#fff;">
-            <h4>INCIDENT DESCRIPTION</h4>
-            <p id="modalDescription" style="font-size:0.9rem; color:var(--text-main);">Incident description text...</p>
+          
+          <!-- Customer Conversation Thread -->
+          <div class="context-box" style="background:var(--bg-card);">
+            <h4>💬 CUSTOMER CONVERSATION</h4>
+            <div id="conversationThreadList"></div>
           </div>
 
-          <!-- Internal Work Notes (Hidden from Customer role) -->
-          <div id="workNotesContainer" class="context-box" style="background:#fffbeb; border-color:#fde68a;">
+          <!-- Prominent Information Requested Card (Customer View) -->
+          <div id="infoRequestCardCustomer" class="context-box hidden" style="background:rgba(245, 158, 11, 0.08); border:2px solid #fde68a;">
+            <h4 style="color:#b45309; margin-bottom:6px;">⚠️ ADDITIONAL INFORMATION REQUESTED BY SUPPORT AGENT</h4>
+            <p id="infoRequestPromptText" style="font-size:0.9rem; font-weight:600; color:#92400e; margin-bottom:12px;"></p>
+            
+            <div style="display:flex; flex-direction:column; gap:8px;">
+              <label style="font-size:0.8rem; font-weight:600; color:var(--text-muted);">Your Response / Clarification Details:</label>
+              <textarea id="customerReplyInput" rows="3" placeholder="Provide the requested information or error details here..." style="width:100%; border:1px solid #fcd34d; padding:8px; border-radius:6px; font-size:0.88rem;"></textarea>
+              <div style="display:flex; justify-content:flex-end;">
+                <button onclick="submitCustomerReply()" class="btn-primary" style="background:#d97706;">Submit Information Response</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Internal Work Notes (Strictly Hidden from Customer role) -->
+          <div id="workNotesContainer" class="context-box" style="background:var(--sidebar-hover); border-color:var(--border-subtle);">
             <h4 style="color:#b45309;">🔒 INTERNAL WORK NOTES (Agent & Manager Only)</h4>
             <div id="workNotesList"></div>
             <div style="margin-top:12px; display:flex; gap:8px;">
               <input type="text" id="newWorkNoteInput" placeholder="Add internal investigation/troubleshooting note..." style="flex:1;">
-              <button onclick="submitWorkNote()" class="btn-primary" style="background:#d97706; padding:6px 12px;">Add Note</button>
+              <button onclick="submitWorkNote()" class="btn-primary" style="background:#d97706; padding:6px 12px;">Add Work Note</button>
             </div>
           </div>
 
           <!-- Activity Audit Timeline -->
-          <div class="context-box" style="background:#fff;">
-            <h4>ACTIVITY AUDIT TIMELINE</h4>
+          <div class="context-box" style="background:var(--bg-card);">
+            <h4>📜 ACTIVITY AUDIT TIMELINE</h4>
             <div id="activityTimelineList"></div>
           </div>
         </div>
 
         <!-- Right Panel Actions & SLA -->
         <div class="workspace-right">
-          <div class="context-box" style="background:#fff;">
+          <div class="context-box" style="background:var(--bg-card);">
             <h4>INCIDENT SUMMARY</h4>
             <p style="font-size:0.85rem; margin-bottom:6px;"><strong>Status:</strong> <span id="modalStatusBadge" class="badge badge-state">In Progress</span></p>
             <p style="font-size:0.85rem; margin-bottom:6px;"><strong>Category / Priority:</strong> <span id="modalCategoryPriority">SOFTWARE / P2</span></p>

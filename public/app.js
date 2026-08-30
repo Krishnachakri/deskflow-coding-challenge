@@ -1,77 +1,221 @@
 let currentUser = null;
-let usersList = [];
+let authToken = localStorage.getItem('deskflow_token');
 let activeTicketId = null;
+let liveSlaTimer = null;
+let activeTicketsCache = [];
 
-// Initialize on page load
+let currentTheme = localStorage.getItem('deskflow_theme') || 'light';
+
+// Initialize application on DOM load
 document.addEventListener('DOMContentLoaded', async () => {
-  await fetchUsers();
-  await updateSimTime();
-  onRoleChange();
+  initTheme();
+  if (authToken) {
+    const valid = await checkSession();
+    if (!valid) {
+      showLoginModal();
+      return;
+    }
+  } else {
+    showLoginModal();
+    return;
+  }
+
+  await initApp();
 });
 
-// Fetch Users for Demo Auth Role Switcher
-async function fetchUsers() {
-  const res = await fetch('/api/users');
-  usersList = await res.json();
-  const select = document.getElementById('userRoleSelect');
-  currentUser = usersList.find(u => u.id === select.value);
+function initTheme() {
+  document.documentElement.setAttribute('data-theme', currentTheme);
+  updateThemeButtonUI();
 }
 
-// Handle Demo Role Change
-async function onRoleChange() {
-  const selectedId = document.getElementById('userRoleSelect').value;
-  currentUser = usersList.find(u => u.id === selectedId);
+function toggleTheme() {
+  currentTheme = currentTheme === 'light' ? 'dark' : 'light';
+  localStorage.setItem('deskflow_theme', currentTheme);
+  document.documentElement.setAttribute('data-theme', currentTheme);
+  updateThemeButtonUI();
+}
 
-  const isCustomer = currentUser.role === 'CUSTOMER';
-  const isManager = currentUser.role === 'MANAGER';
+function updateThemeButtonUI() {
+  const iconEl = document.getElementById('themeIcon');
+  if (iconEl) {
+    if (currentTheme === 'dark') {
+      iconEl.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>`;
+    } else {
+      iconEl.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>`;
+    }
+  }
+}
 
-  // Toggle Tab Visibility based on Role
-  document.getElementById('tabDashboard').classList.toggle('hidden', isCustomer);
-  document.getElementById('tabRules').classList.toggle('hidden', !isManager);
-  document.getElementById('workloadSection').classList.toggle('hidden', !isManager);
+function toggleSidebarSection(containerId, arrowId) {
+  const container = document.getElementById(containerId);
+  const arrow = document.getElementById(arrowId);
+  if (container) {
+    container.classList.toggle('collapsed');
+    if (arrow) {
+      arrow.innerText = container.classList.contains('collapsed') ? '▸' : '▾';
+    }
+  }
+}
 
-  // Set default view tab
-  if (isCustomer) {
-    switchNavTab('create');
+async function checkSession() {
+  try {
+    const res = await fetch('/api/auth/me', {
+      headers: { 'Authorization': `Bearer ${authToken}` }
+    });
+    if (res.ok) {
+      const data = await res.json();
+      currentUser = data.user;
+      return true;
+    }
+  } catch (e) {}
+  authToken = null;
+  localStorage.removeItem('deskflow_token');
+  return false;
+}
+
+function showLoginModal() {
+  document.getElementById('loginModal').classList.remove('hidden');
+}
+
+function hideLoginModal() {
+  document.getElementById('loginModal').classList.add('hidden');
+}
+
+async function quickLogin(demoUserId) {
+  const res = await fetch('/api/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ demoUserId })
+  });
+  if (res.ok) {
+    const data = await res.json();
+    authToken = data.token;
+    currentUser = data.user;
+    localStorage.setItem('deskflow_token', authToken);
+    hideLoginModal();
+    await initApp();
+  }
+}
+
+async function handleLoginSubmit(event) {
+  event.preventDefault();
+  const username = document.getElementById('loginUsername').value;
+  const res = await fetch('/api/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username })
+  });
+
+  const data = await res.json();
+  if (res.ok) {
+    authToken = data.token;
+    currentUser = data.user;
+    localStorage.setItem('deskflow_token', authToken);
+    hideLoginModal();
+    await initApp();
   } else {
-    switchNavTab('dashboard');
+    alert(data.error || 'Login failed.');
+  }
+}
+
+async function handleLogout() {
+  if (authToken) {
+    await fetch('/api/auth/logout', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${authToken}` }
+    });
+  }
+  authToken = null;
+  currentUser = null;
+  localStorage.removeItem('deskflow_token');
+  showLoginModal();
+}
+
+// Main App Initialization
+async function initApp() {
+  const notifEl = document.getElementById('notifDropdown');
+  if (notifEl) notifEl.classList.add('hidden');
+
+  updateUserProfileDisplay();
+  await updateSimTime();
+  startContinuousSlaClock();
+
+  if (currentUser.role === 'CUSTOMER') {
+    navigateSidebar('queue', 'ALL');
+  } else {
+    navigateSidebar('dashboard');
   }
 
   await refreshAll();
 }
 
-// Navigation Tab Switcher
-function switchNavTab(tabName) {
-  document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
-  
-  const isCustomer = currentUser ? currentUser.role === 'CUSTOMER' : false;
-  const isManager = currentUser ? currentUser.role === 'MANAGER' : false;
+function updateUserProfileDisplay() {
+  document.getElementById('sbUserName').innerText = currentUser.name;
+  document.getElementById('sbUserRole').innerText = currentUser.role;
+
+  const isManager = currentUser.role === 'MANAGER';
+  const isCustomer = currentUser.role === 'CUSTOMER';
+
+  document.getElementById('sbManagerSection').classList.toggle('hidden', !isManager);
+  document.getElementById('sbDashboard').classList.toggle('hidden', isCustomer);
+  document.getElementById('workloadSection').classList.toggle('hidden', !isManager);
+}
+
+// Sidebar Navigation Handler
+function navigateSidebar(tabName, filterVal) {
+  document.querySelectorAll('.sidebar-btn').forEach(btn => btn.classList.remove('active'));
+
+  const isCustomer = currentUser.role === 'CUSTOMER';
+  const isManager = currentUser.role === 'MANAGER';
 
   document.getElementById('managerDashboardSection').classList.toggle('hidden', tabName !== 'dashboard' || isCustomer);
   document.getElementById('workloadSection').classList.toggle('hidden', tabName !== 'dashboard' || !isManager);
   document.getElementById('createTicketSection').classList.toggle('hidden', tabName !== 'create');
   document.getElementById('ticketQueueSection').classList.toggle('hidden', tabName !== 'queue' && tabName !== 'dashboard');
   document.getElementById('rulesSection').classList.toggle('hidden', tabName !== 'rules' || !isManager);
+  document.getElementById('slaConfigSection').classList.toggle('hidden', tabName !== 'sLaconfig' || !isManager);
 
-  if (tabName === 'dashboard') document.getElementById('tabDashboard').classList.add('active');
-  if (tabName === 'create') document.getElementById('tabCreate').classList.add('active');
-  if (tabName === 'queue') document.getElementById('tabQueue').classList.add('active');
-  if (tabName === 'rules') document.getElementById('tabRules').classList.add('active');
+  // Set active button
+  if (tabName === 'dashboard') document.getElementById('sbDashboard').classList.add('active');
+  if (tabName === 'create') document.getElementById('sbCreate').classList.add('active');
+  if (tabName === 'rules') document.getElementById('sbRules').classList.add('active');
+  if (tabName === 'sLaconfig') document.getElementById('sbSlaConfig').classList.add('active');
 
-  document.getElementById('queuePanelTitle').innerText = isCustomer
-    ? 'My Raised Incidents'
+  if (tabName === 'queue') {
+    const filterSelect = document.getElementById('ticketFilterSelect');
+    if (filterVal) {
+      filterSelect.value = filterVal;
+    }
+    loadTickets();
+  }
+
+  document.getElementById('mainHeaderTitle').innerText = isCustomer
+    ? 'Customer Incident Portal'
     : isManager
-    ? 'All System Incidents (Manager View)'
-    : `Assigned Incidents Queue (${currentUser ? currentUser.name : ''})`;
+    ? 'Manager Operations Console'
+    : `Agent Support Workspace (${currentUser.name})`;
 }
 
-// Global Refresh
+function navigateCategory(category) {
+  navigateSidebar('queue');
+  loadTicketsByCategory(category);
+}
+
+// Actionable Dashboard Card Click Filter
+function filterQueueByMetric(filterType) {
+  navigateSidebar('queue', filterType);
+}
+
+// Global Data Refresh
 async function refreshAll() {
   await updateSimTime();
-  if (currentUser.role === 'MANAGER') {
+  if (currentUser && currentUser.role !== 'CUSTOMER') {
     await loadMetrics();
+  }
+  if (currentUser && currentUser.role === 'MANAGER') {
     await loadRules();
     await loadWorkload();
+    await loadSlaConfig();
   }
   await loadNotifications();
   await loadTickets();
@@ -89,20 +233,90 @@ async function updateSimTime() {
 async function fastForwardTime(hours) {
   await fetch('/api/system-config/fast-forward', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${authToken}`
+    },
     body: JSON.stringify({ hours })
   });
   await refreshAll();
 }
 
 async function resetTime() {
-  await fetch('/api/system-config/reset-time', { method: 'POST' });
+  await fetch('/api/system-config/reset-time', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${authToken}` }
+  });
   await refreshAll();
+}
+
+// Manager SLA Configuration
+async function loadSlaConfig() {
+  const res = await fetch('/api/system-config');
+  const config = await res.json();
+  document.getElementById('slaResponseHours').value = config.slaResponseHours || 4;
+  document.getElementById('slaResolutionHours').value = config.slaResolutionHours || 16;
+  document.getElementById('slaAtRiskMins').value = config.slaAtRiskMins || 60;
+  document.getElementById('slaBizStart').value = config.slaBizStart || 9;
+  document.getElementById('slaBizEnd').value = config.slaBizEnd || 17;
+}
+
+async function handleSaveSlaConfig(event) {
+  event.preventDefault();
+  const responseHours = document.getElementById('slaResponseHours').value;
+  const resolutionHours = document.getElementById('slaResolutionHours').value;
+  const atRiskMins = document.getElementById('slaAtRiskMins').value;
+  const bizStart = document.getElementById('slaBizStart').value;
+  const bizEnd = document.getElementById('slaBizEnd').value;
+
+  const res = await fetch('/api/system-config/sla', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${authToken}`
+    },
+    body: JSON.stringify({ responseHours, resolutionHours, atRiskMins, bizStart, bizEnd })
+  });
+
+  const data = await res.json();
+  if (!res.ok) {
+    alert(data.error || 'Failed to update SLA configuration.');
+    return;
+  }
+
+  alert('SLA Policy Configuration updated successfully!');
+  await refreshAll();
+}
+
+// Continuous Live Response SLA Clock (Updates Live without Seconds)
+function formatSlaNoSeconds(remainingMins) {
+  if (isNaN(remainingMins) || remainingMins <= 0) return 'Breached';
+  const totalMins = Math.floor(remainingMins);
+  const hours = Math.floor(totalMins / 60);
+  const mins = totalMins % 60;
+  return hours > 0 ? `${hours}h ${mins}m remaining` : `${mins}m remaining`;
+}
+
+function startContinuousSlaClock() {
+  if (liveSlaTimer) clearInterval(liveSlaTimer);
+  liveSlaTimer = setInterval(() => {
+    updateVisibleSlaClocks();
+  }, 1000);
+}
+
+function updateVisibleSlaClocks() {
+  document.querySelectorAll('.live-sla-clock').forEach(el => {
+    const remainingMins = parseFloat(el.getAttribute('data-mins-remaining'));
+    if (isNaN(remainingMins) || remainingMins <= 0) return;
+    el.innerText = `⏱️ ${formatSlaNoSeconds(remainingMins)}`;
+  });
 }
 
 // Load Manager Dashboard Metrics
 async function loadMetrics() {
-  const res = await fetch('/api/dashboard-metrics');
+  const res = await fetch('/api/dashboard-metrics', {
+    headers: { 'Authorization': `Bearer ${authToken}` }
+  });
   const metrics = await res.json();
   document.getElementById('metricTotalOpen').innerText = metrics.totalOpen;
   document.getElementById('metricAtRisk').innerText = metrics.atRiskCount;
@@ -112,7 +326,9 @@ async function loadMetrics() {
 
 // Load Agent Workload Balancing (Manager View)
 async function loadWorkload() {
-  const res = await fetch('/api/workload');
+  const res = await fetch('/api/workload', {
+    headers: { 'Authorization': `Bearer ${authToken}` }
+  });
   const agents = await res.json();
   const container = document.getElementById('workloadGrid');
   container.innerHTML = agents.map(a => `
@@ -126,7 +342,9 @@ async function loadWorkload() {
 // Load Log-Mode Notifications
 async function loadNotifications() {
   if (!currentUser) return;
-  const res = await fetch(`/api/notifications?userId=${currentUser.id}`);
+  const res = await fetch('/api/notifications', {
+    headers: { 'Authorization': `Bearer ${authToken}` }
+  });
   const notifs = await res.json();
   
   document.getElementById('notifBadgeCount').innerText = notifs.length;
@@ -145,7 +363,7 @@ function toggleNotificationPanel() {
   document.getElementById('notifDropdown').classList.toggle('hidden');
 }
 
-// Search Feature Integration
+// Search Feature Integration (Located Beside Filters Control)
 function handleSearchKeyup(event) {
   if (event.key === 'Enter') triggerSearch();
 }
@@ -157,9 +375,11 @@ async function triggerSearch() {
     return;
   }
 
-  switchNavTab('queue');
-  const url = `/api/search?q=${encodeURIComponent(q)}&role=${currentUser.role}&userId=${currentUser.id}`;
-  const res = await fetch(url);
+  navigateSidebar('queue');
+  const url = `/api/search?q=${encodeURIComponent(q)}`;
+  const res = await fetch(url, {
+    headers: { 'Authorization': `Bearer ${authToken}` }
+  });
   const tickets = await res.json();
 
   renderTicketsList(tickets, `Search Results for "${q}"`);
@@ -180,10 +400,35 @@ function getUIStateLabel(state) {
 // Load Incidents Queue Table
 async function loadTickets() {
   const filter = document.getElementById('ticketFilterSelect').value;
-  const url = `/api/tickets?role=${currentUser.role}&userId=${currentUser.id}&filter=${filter}`;
-  const res = await fetch(url);
+  const url = `/api/tickets?filter=${filter}`;
+  const res = await fetch(url, {
+    headers: { 'Authorization': `Bearer ${authToken}` }
+  });
   const tickets = await res.json();
+  activeTicketsCache = tickets;
+  updateSidebarCounts(tickets);
   renderTicketsList(tickets);
+}
+
+async function loadTicketsByCategory(category) {
+  const url = `/api/tickets?category=${category}`;
+  const res = await fetch(url, {
+    headers: { 'Authorization': `Bearer ${authToken}` }
+  });
+  const tickets = await res.json();
+  renderTicketsList(tickets, `Category: ${category}`);
+}
+
+function updateSidebarCounts(tickets) {
+  document.getElementById('cntAll').innerText = tickets.length;
+  document.getElementById('cntNew').innerText = tickets.filter(t => t.state === 'NEW').length;
+  document.getElementById('cntInProgress').innerText = tickets.filter(t => t.state === 'IN_PROGRESS').length;
+  document.getElementById('cntPending').innerText = tickets.filter(t => t.state === 'PENDING_CUSTOMER').length;
+  document.getElementById('cntResolved').innerText = tickets.filter(t => t.state === 'RESOLVED').length;
+  document.getElementById('cntClosed').innerText = tickets.filter(t => t.state === 'CLOSED').length;
+  document.getElementById('cntAtRisk').innerText = tickets.filter(t => t.sla_state === 'AT_RISK').length;
+  document.getElementById('cntOverdue').innerText = tickets.filter(t => t.sla_state === 'OVERDUE').length;
+  document.getElementById('cntEscalated').innerText = tickets.filter(t => t.is_escalated === 1).length;
 }
 
 function renderTicketsList(tickets, customTitle) {
@@ -194,7 +439,7 @@ function renderTicketsList(tickets, customTitle) {
   const tbody = document.getElementById('ticketsTableBody');
   tbody.innerHTML = '';
 
-  if (tickets.length === 0) {
+  if (!tickets || tickets.length === 0) {
     tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; color:var(--text-muted);">No incidents found in queue.</td></tr>';
     return;
   }
@@ -222,7 +467,7 @@ function renderTicketsList(tickets, customTitle) {
       if (ticket.response_mins_remaining <= 0) {
         clockText = `<span style="color:var(--status-overdue); font-weight:bold;">Breached (${Math.abs(ticket.response_mins_remaining)}m ago)</span>`;
       } else {
-        clockText = `⏱️ ${ticket.response_mins_remaining}m remaining`;
+        clockText = `<span class="live-sla-clock" data-mins-remaining="${ticket.response_mins_remaining}">⏱️ ${formatSlaNoSeconds(ticket.response_mins_remaining)}</span>`;
       }
     }
 
@@ -241,6 +486,8 @@ function renderTicketsList(tickets, customTitle) {
     `;
     tbody.appendChild(tr);
   });
+
+  updateVisibleSlaClocks();
 }
 
 // Submit Create Ticket Form
@@ -253,29 +500,35 @@ async function handleCreateTicket(event) {
 
   const res = await fetch('/api/tickets', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      title, category, priority, description,
-      customerId: currentUser.id
-    })
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${authToken}`
+    },
+    body: JSON.stringify({ title, category, priority, description })
   });
 
   if (res.ok) {
     document.getElementById('createTicketForm').reset();
-    switchNavTab('queue');
+    navigateSidebar('queue', 'ALL');
     await refreshAll();
   }
 }
 
-// Inspect Ticket Detail (IMS Operational Workspace)
+// Inspect Ticket Detail Workspace
 async function inspectTicket(ticketId) {
   activeTicketId = ticketId;
-  const res = await fetch(`/api/tickets/${ticketId}?role=${currentUser.role}`);
+  const res = await fetch(`/api/tickets/${ticketId}`, {
+    headers: { 'Authorization': `Bearer ${authToken}` }
+  });
   const ticket = await res.json();
+
+  if (res.status === 403) {
+    alert(ticket.error || 'FORBIDDEN: Access denied.');
+    return;
+  }
 
   document.getElementById('modalTicketId').innerText = ticket.id;
   document.getElementById('modalTicketTitle').innerText = ticket.title;
-  document.getElementById('modalDescription').innerText = ticket.description || 'No detailed description provided.';
   document.getElementById('modalCategoryPriority').innerText = `${ticket.category} / ${ticket.priority}`;
   document.getElementById('modalStatusBadge').innerText = getUIStateLabel(ticket.state);
   document.getElementById('modalAssigneeName').innerText = ticket.agent_name || 'Unassigned';
@@ -290,17 +543,57 @@ async function inspectTicket(ticketId) {
   document.getElementById('modalResponseClock').innerHTML = ticket.responded_at
     ? '✅ Responded'
     : ticket.response_mins_remaining !== null
-    ? `${ticket.response_mins_remaining}m remaining`
+    ? formatSlaNoSeconds(ticket.response_mins_remaining)
     : '--';
 
-  // Render Internal Work Notes (Hidden from Customer role)
-  const workNotesPanel = document.getElementById('workNotesContainer');
+  // Render Customer Conversation Thread
+  const conversationList = document.getElementById('conversationThreadList');
+  let convHtml = `
+    <div class="conversation-bubble bubble-customer">
+      <div class="bubble-meta">${ticket.customer_name || 'Customer'} (Requester) • Initial Description</div>
+      <div>${ticket.description}</div>
+    </div>
+  `;
+
+  if (ticket.conversation && ticket.conversation.length > 0) {
+    ticket.conversation.forEach(c => {
+      if (c.entry_type === 'AGENT_REQUEST') {
+        convHtml += `
+          <div class="conversation-bubble bubble-agent-req">
+            <div class="bubble-meta">⚠️ ${c.actor_name || 'Agent'} • Information Requested</div>
+            <div><strong>Requested:</strong> ${c.content}</div>
+          </div>
+        `;
+      } else if (c.entry_type === 'CUSTOMER_REPLY') {
+        convHtml += `
+          <div class="conversation-bubble bubble-customer">
+            <div class="bubble-meta">${c.actor_name || 'Customer'} • Response</div>
+            <div>${c.content}</div>
+          </div>
+        `;
+      }
+    });
+  }
+  conversationList.innerHTML = convHtml;
+
+  // Render Prominent Information Requested Card for Customer
   const isCustomer = currentUser.role === 'CUSTOMER';
+  const infoCard = document.getElementById('infoRequestCardCustomer');
+
+  if (isCustomer && ticket.state === 'PENDING_CUSTOMER' && ticket.info_requested) {
+    infoCard.classList.remove('hidden');
+    document.getElementById('infoRequestPromptText').innerText = `"${ticket.info_requested}"`;
+  } else {
+    infoCard.classList.add('hidden');
+  }
+
+  // Render Internal Work Notes (Strictly Hidden from Customer role)
+  const workNotesPanel = document.getElementById('workNotesContainer');
   workNotesPanel.classList.toggle('hidden', isCustomer);
 
   if (!isCustomer) {
     const workNotesList = document.getElementById('workNotesList');
-    workNotesList.innerHTML = ticket.workNotes.length === 0
+    workNotesList.innerHTML = (!ticket.workNotes || ticket.workNotes.length === 0)
       ? '<p style="font-size:0.8rem; color:var(--text-muted);">No internal work notes recorded yet.</p>'
       : ticket.workNotes.map(n => `
           <div class="work-note-item">
@@ -322,14 +615,16 @@ async function inspectTicket(ticketId) {
   const isManager = currentUser.role === 'MANAGER';
   document.getElementById('managerReassignBox').classList.toggle('hidden', !isManager);
 
-  // Action Buttons
+  // Action Buttons Matrix
   const actionsDiv = document.getElementById('modalActionButtons');
   actionsDiv.innerHTML = '';
 
   if (currentUser.role === 'AGENT' || currentUser.role === 'MANAGER') {
     if (ticket.state === 'NEW' || ticket.state === 'PENDING_CUSTOMER') {
       actionsDiv.innerHTML += `<button onclick="submitStateChange('IN_PROGRESS')" class="btn-primary" style="background:var(--deskflow-blue);">Start Work / Respond</button>`;
-      actionsDiv.innerHTML += `<button onclick="submitStateChange('PENDING_CUSTOMER')" class="btn-primary" style="background:#d97706;">Request Info</button>`;
+    }
+    if (ticket.state === 'NEW' || ticket.state === 'IN_PROGRESS' || ticket.state === 'PENDING_CUSTOMER') {
+      actionsDiv.innerHTML += `<button onclick="openRequestInfoModal()" class="btn-primary" style="background:#d97706;">💬 Request Information</button>`;
     }
     if (ticket.state === 'IN_PROGRESS') {
       actionsDiv.innerHTML += `<button onclick="submitStateChange('RESOLVED')" class="btn-primary" style="background:var(--status-normal);">Mark Resolved</button>`;
@@ -345,17 +640,88 @@ function closeModal() {
   document.getElementById('ticketModal').classList.add('hidden');
 }
 
-// Submit Work Note (Internal Agent/Manager)
+// Request Information Workflow Modals
+function openRequestInfoModal() {
+  document.getElementById('requestInfoModal').classList.remove('hidden');
+}
+
+function closeRequestInfoModal() {
+  document.getElementById('requestInfoModal').classList.add('hidden');
+}
+
+async function submitRequestInfo() {
+  const requestText = document.getElementById('requestInfoInput').value.trim();
+  if (!requestText) {
+    alert('Please enter the information request details.');
+    return;
+  }
+
+  const res = await fetch(`/api/tickets/${activeTicketId}/request-info`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${authToken}`
+    },
+    body: JSON.stringify({ requestText })
+  });
+
+  if (res.ok) {
+    document.getElementById('requestInfoInput').value = '';
+    closeRequestInfoModal();
+    await inspectTicket(activeTicketId);
+    await refreshAll();
+  } else {
+    const err = await res.json();
+    alert(err.error || 'Failed to request information.');
+  }
+}
+
+async function submitCustomerReply() {
+  const replyText = document.getElementById('customerReplyInput').value.trim();
+  if (!replyText) {
+    alert('Please enter your response details.');
+    return;
+  }
+
+  const res = await fetch(`/api/tickets/${activeTicketId}/customer-reply`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${authToken}`
+    },
+    body: JSON.stringify({ replyText })
+  });
+
+  if (res.ok) {
+    document.getElementById('customerReplyInput').value = '';
+    await inspectTicket(activeTicketId);
+    await refreshAll();
+  } else {
+    const err = await res.json();
+    alert(err.error || 'Failed to submit response.');
+  }
+}
+
+// Submit Work Note (Internal Agent/Manager Only)
 async function submitWorkNote() {
   const noteInput = document.getElementById('newWorkNoteInput');
   const note = noteInput.value.trim();
   if (!note) return;
 
-  await fetch(`/api/tickets/${activeTicketId}/work-notes`, {
+  const res = await fetch(`/api/tickets/${activeTicketId}/work-notes`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ note, actorId: currentUser.id })
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${authToken}`
+    },
+    body: JSON.stringify({ note })
   });
+
+  if (!res.ok) {
+    const err = await res.json();
+    alert(err.error || 'Action forbidden.');
+    return;
+  }
 
   noteInput.value = '';
   await inspectTicket(activeTicketId);
@@ -369,22 +735,42 @@ async function submitStateChange(state) {
     if (!resolutionNotes) return;
   }
 
-  await fetch(`/api/tickets/${activeTicketId}/state`, {
+  const res = await fetch(`/api/tickets/${activeTicketId}/state`, {
     method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ state, actorId: currentUser.id, resolutionNotes })
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${authToken}`
+    },
+    body: JSON.stringify({ state, resolutionNotes })
   });
+
+  const data = await res.json();
+  if (!res.ok) {
+    alert(data.error || 'State transition rejected.');
+    return;
+  }
+
   await inspectTicket(activeTicketId);
   await refreshAll();
 }
 
-// Submit Reassignment (Manager)
+// Submit Reassignment (Manager Only)
 async function submitReassign(agentId) {
-  await fetch(`/api/tickets/${activeTicketId}/reassign`, {
+  const res = await fetch(`/api/tickets/${activeTicketId}/reassign`, {
     method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ agentId, actorId: currentUser.id })
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${authToken}`
+    },
+    body: JSON.stringify({ agentId })
   });
+
+  if (!res.ok) {
+    const err = await res.json();
+    alert(err.error || 'Reassignment forbidden.');
+    return;
+  }
+
   await inspectTicket(activeTicketId);
   await refreshAll();
 }
@@ -419,16 +805,33 @@ async function handleAddRule(event) {
   const targetAgentId = document.getElementById('ruleTargetAgent').value;
   const useWorkloadBalance = document.getElementById('ruleWorkloadBalance').checked;
 
-  await fetch('/api/rules', {
+  const res = await fetch('/api/rules', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${authToken}`
+    },
     body: JSON.stringify({ category, priority, targetAgentId, useWorkloadBalance })
   });
+
+  if (!res.ok) {
+    const err = await res.json();
+    alert(err.error || 'Action forbidden.');
+    return;
+  }
 
   await loadRules();
 }
 
 async function handleDeleteRule(ruleId) {
-  await fetch(`/api/rules/${ruleId}`, { method: 'DELETE' });
+  const res = await fetch(`/api/rules/${ruleId}`, {
+    method: 'DELETE',
+    headers: { 'Authorization': `Bearer ${authToken}` }
+  });
+  if (!res.ok) {
+    const err = await res.json();
+    alert(err.error || 'Action forbidden.');
+    return;
+  }
   await loadRules();
 }

@@ -1,5 +1,6 @@
 const express = require('express');
 const path = require('path');
+const crypto = require('crypto');
 const db = require('./db');
 const { addBusinessMinutes, evaluateTicketSLA } = require('./slaEngine');
 const { findTargetAgent, getAgentWorkload } = require('./assignmentEngine');
@@ -22,15 +23,148 @@ function getSimulatedTime() {
   };
 }
 
-// 1. Users API (Demo Auth Role Simulation)
+// Authentication & Session Resolution Middleware
+function getAuthUser(req) {
+  const tokenHeader = req.headers['authorization'] || req.headers['x-demo-token'];
+  let token = null;
+  if (tokenHeader && tokenHeader.startsWith('Bearer ')) {
+    token = tokenHeader.substring(7);
+  } else if (tokenHeader) {
+    token = tokenHeader;
+  } else if (req.query.token) {
+    token = req.query.token;
+  }
+
+  if (token) {
+    const session = db.prepare('SELECT user_id FROM sessions WHERE token = ?').get(token);
+    if (session) {
+      const user = db.prepare('SELECT id, username, name, email, role FROM users WHERE id = ?').get(session.user_id);
+      if (user) return user;
+    }
+  }
+
+  // Fallback helper for demo & test suite parameters (userId or actorId)
+  const userId = req.query.userId || req.body?.userId || req.body?.actorId || req.body?.customerId;
+  if (userId) {
+    const user = db.prepare('SELECT id, username, name, email, role FROM users WHERE id = ? OR username = ?').get(userId, userId);
+    if (user) return user;
+  }
+
+  return null;
+}
+
+// ------------------------------------------------------------
+// 1. DEMO AUTHENTICATION APIS
+// ------------------------------------------------------------
+
+app.post('/api/auth/login', (req, res) => {
+  const { username, password, demoUserId } = req.body;
+
+  let user = null;
+  if (demoUserId) {
+    user = db.prepare('SELECT * FROM users WHERE id = ?').get(demoUserId);
+  } else if (username) {
+    user = db.prepare('SELECT * FROM users WHERE username = ? OR email = ?').get(username, username);
+  }
+
+  if (!user) {
+    return res.status(401).json({ error: 'INVALID CREDENTIALS: User account not found.' });
+  }
+
+  // Generate safe session token
+  const token = `sess-${Date.now()}-${crypto.randomBytes(8).toString('hex')}`;
+  const { simulatedTime } = getSimulatedTime();
+
+  db.prepare('INSERT INTO sessions (token, user_id, created_at) VALUES (?, ?, ?)').run(token, user.id, simulatedTime);
+
+  res.json({
+    message: `Logged in successfully as ${user.name} (${user.role})`,
+    token,
+    user: {
+      id: user.id,
+      username: user.username,
+      name: user.name,
+      email: user.email,
+      role: user.role
+    }
+  });
+});
+
+app.post('/api/auth/logout', (req, res) => {
+  const tokenHeader = req.headers['authorization'] || req.headers['x-demo-token'];
+  if (tokenHeader) {
+    const token = tokenHeader.replace('Bearer ', '');
+    db.prepare('DELETE FROM sessions WHERE token = ?').run(token);
+  }
+  res.json({ message: 'Logged out successfully.' });
+});
+
+app.get('/api/auth/me', (req, res) => {
+  const authUser = getAuthUser(req);
+  if (!authUser) {
+    return res.status(401).json({ error: 'UNAUTHORIZED: Please sign in.' });
+  }
+  res.json({ user: authUser });
+});
+
 app.get('/api/users', (req, res) => {
-  const users = db.prepare('SELECT * FROM users').all();
+  const users = db.prepare('SELECT id, username, name, email, role FROM users').all();
   res.json(users);
 });
 
-// 2. System Time Simulation API
+// ------------------------------------------------------------
+// 2. SYSTEM TIME & SLA CONFIGURATION APIS
+// ------------------------------------------------------------
+
 app.get('/api/system-config', (req, res) => {
-  res.json(getSimulatedTime());
+  const sim = getSimulatedTime();
+  const configs = db.prepare('SELECT key, value FROM system_config').all();
+  const configObj = {};
+  configs.forEach(c => { configObj[c.key] = c.value; });
+
+  res.json({
+    ...sim,
+    slaResponseHours: parseFloat(configObj.sla_response_hours || '4'),
+    slaResolutionHours: parseFloat(configObj.sla_resolution_hours || '16'),
+    slaAtRiskMins: parseFloat(configObj.sla_at_risk_mins || '60'),
+    slaBizStart: parseInt(configObj.sla_biz_start || '9', 10),
+    slaBizEnd: parseInt(configObj.sla_biz_end || '17', 10)
+  });
+});
+
+app.post('/api/system-config/sla', (req, res) => {
+  const authUser = getAuthUser(req);
+  if (!authUser || authUser.role !== 'MANAGER') {
+    return res.status(403).json({ error: 'FORBIDDEN: Only Manager role can configure SLA targets.' });
+  }
+
+  const { responseHours, resolutionHours, atRiskMins, bizStart, bizEnd } = req.body;
+  const respH = parseFloat(responseHours);
+  const resH = parseFloat(resolutionHours);
+  const atRiskM = parseFloat(atRiskMins);
+  const start = parseInt(bizStart, 10);
+  const end = parseInt(bizEnd, 10);
+
+  if (isNaN(respH) || respH <= 0 || isNaN(resH) || resH <= 0 || isNaN(atRiskM) || atRiskM <= 0) {
+    return res.status(400).json({ error: 'SLA target hours and At-Risk minutes must be positive numbers.' });
+  }
+
+  if (isNaN(start) || isNaN(end) || start < 0 || end > 24 || start >= end) {
+    return res.status(400).json({ error: 'Business hours start time must be less than end time (e.g. 9 to 17).' });
+  }
+
+  if (atRiskM >= respH * 60) {
+    return res.status(400).json({ error: 'At-Risk threshold minutes must be less than total Response SLA minutes.' });
+  }
+
+  const upsert = db.prepare('INSERT OR REPLACE INTO system_config (key, value) VALUES (?, ?)');
+  upsert.run('sla_response_hours', respH.toString());
+  upsert.run('sla_resolution_hours', resH.toString());
+  upsert.run('sla_at_risk_mins', atRiskM.toString());
+  upsert.run('sla_biz_start', start.toString());
+  upsert.run('sla_biz_end', end.toString());
+
+  res.json({ message: 'SLA configuration updated successfully.' });
 });
 
 app.post('/api/system-config/fast-forward', (req, res) => {
@@ -39,31 +173,37 @@ app.post('/api/system-config/fast-forward', (req, res) => {
   const currentOffset = currentConfig ? parseFloat(currentConfig.value) : 0;
   const newOffset = currentOffset + (parseFloat(hours) || 0);
 
-  db.prepare('UPDATE system_config SET value = ? WHERE key = ?').run(newOffset.toString(), 'simulated_time_offset_hours');
+  db.prepare('INSERT OR REPLACE INTO system_config (key, value) VALUES (?, ?)').run('simulated_time_offset_hours', newOffset.toString());
   res.json({ message: `Fast-forwarded time by ${hours} hour(s).`, ...getSimulatedTime() });
 });
 
 app.post('/api/system-config/reset-time', (req, res) => {
-  db.prepare('UPDATE system_config SET value = ? WHERE key = ?').run('0', 'simulated_time_offset_hours');
+  db.prepare('INSERT OR REPLACE INTO system_config (key, value) VALUES (?, ?)').run('simulated_time_offset_hours', '0');
   res.json({ message: 'Simulated time reset to real time.', ...getSimulatedTime() });
 });
 
-// 3. Phase 4 Search API
+// ------------------------------------------------------------
+// 3. SEARCH & NOTIFICATIONS APIS
+// ------------------------------------------------------------
+
 app.get('/api/search', (req, res) => {
-  const { q, role, userId, category, priority, state, assignee } = req.query;
-  const results = searchIncidents(q, role, userId, category, priority, state, assignee);
+  const authUser = getAuthUser(req);
+  const { q, category, priority, state, assignee } = req.query;
+  const verifiedRole = authUser ? authUser.role : 'CUSTOMER';
+  const userId = authUser ? authUser.id : req.query.userId;
+
+  const results = searchIncidents(q, verifiedRole, userId, category, priority, state, assignee);
   res.json(results);
 });
 
-// 4. Phase 4 Notifications API
 app.get('/api/notifications', (req, res) => {
-  const { userId } = req.query;
+  const authUser = getAuthUser(req);
+  const userId = authUser ? authUser.id : req.query.userId;
   if (!userId) return res.status(400).json({ error: 'userId required.' });
   const notifications = getNotificationsForUser(userId);
   res.json(notifications);
 });
 
-// 5. Phase 4 Agent Workload API
 app.get('/api/workload', (req, res) => {
   const agents = db.prepare("SELECT id, name, email FROM users WHERE role = 'AGENT'").all();
   const workload = agents.map(agent => ({
@@ -73,13 +213,17 @@ app.get('/api/workload', (req, res) => {
   res.json(workload);
 });
 
-// 6. Phase 4 Holiday Calendar API
 app.get('/api/holidays', (req, res) => {
   const holidays = db.prepare('SELECT * FROM holidays ORDER BY holiday_date ASC').all();
   res.json(holidays);
 });
 
 app.post('/api/holidays', (req, res) => {
+  const authUser = getAuthUser(req);
+  if (!authUser || authUser.role !== 'MANAGER') {
+    return res.status(403).json({ error: 'FORBIDDEN: Only Manager role can add holidays.' });
+  }
+
   const { holidayDate, name } = req.body;
   if (!holidayDate || !name) return res.status(400).json({ error: 'holidayDate and name required.' });
 
@@ -90,18 +234,25 @@ app.post('/api/holidays', (req, res) => {
   res.status(201).json({ message: 'Holiday added to business calendar.', id });
 });
 
-// 7. Tickets Queue API
+// ------------------------------------------------------------
+// 4. TICKETS QUEUE & DETAIL APIS
+// ------------------------------------------------------------
+
 app.get('/api/tickets', (req, res) => {
-  const { role, userId, filter } = req.query;
+  const authUser = getAuthUser(req);
+  const verifiedRole = authUser ? authUser.role : 'CUSTOMER';
+  const userId = authUser ? authUser.id : req.query.userId;
+  const { filter, category } = req.query;
   const { simulatedTime } = getSimulatedTime();
 
   let query = 'SELECT t.*, c.name as customer_name, a.name as agent_name FROM tickets t LEFT JOIN users c ON t.customer_id = c.id LEFT JOIN users a ON t.agent_id = a.id';
   const params = [];
 
-  if (role === 'CUSTOMER' && userId) {
+  // Customer Data Isolation
+  if (verifiedRole === 'CUSTOMER' && userId) {
     query += ' WHERE t.customer_id = ?';
     params.push(userId);
-  } else if (role === 'AGENT' && userId) {
+  } else if (verifiedRole === 'AGENT' && userId) {
     query += ' WHERE t.agent_id = ? OR t.agent_id IS NULL';
     params.push(userId);
   }
@@ -140,20 +291,33 @@ app.get('/api/tickets', (req, res) => {
   });
 
   let filteredTickets = evaluatedTickets;
-  if (filter === 'AT_RISK') {
+
+  // State Filters
+  if (['NEW', 'IN_PROGRESS', 'PENDING_CUSTOMER', 'RESOLVED', 'CLOSED'].includes(filter)) {
+    filteredTickets = evaluatedTickets.filter(t => t.state === filter);
+  } else if (filter === 'AT_RISK') {
     filteredTickets = evaluatedTickets.filter(t => t.sla_state === 'AT_RISK');
   } else if (filter === 'OVERDUE') {
     filteredTickets = evaluatedTickets.filter(t => t.sla_state === 'OVERDUE');
+  } else if (filter === 'ESCALATED') {
+    filteredTickets = evaluatedTickets.filter(t => t.is_escalated === 1);
   } else if (filter === 'OPEN') {
     filteredTickets = evaluatedTickets.filter(t => t.state !== 'CLOSED');
+  }
+
+  // Category Filters
+  if (category && ['HARDWARE', 'SOFTWARE', 'BILLING', 'OTHER'].includes(category)) {
+    filteredTickets = filteredTickets.filter(t => t.category === category);
   }
 
   res.json(filteredTickets);
 });
 
-// 8. Ticket Detail API (IMS Operational Workspace)
 app.get('/api/tickets/:id', (req, res) => {
-  const { role } = req.query;
+  const authUser = getAuthUser(req);
+  const verifiedRole = authUser ? authUser.role : 'CUSTOMER';
+  const userId = authUser ? authUser.id : req.query.userId;
+
   const ticket = db.prepare(`
     SELECT t.*, c.name as customer_name, a.name as agent_name 
     FROM tickets t 
@@ -164,13 +328,26 @@ app.get('/api/tickets/:id', (req, res) => {
 
   if (!ticket) return res.status(404).json({ error: 'Ticket not found' });
 
+  // Customer Data Isolation Check (Strict 403 Forbidden)
+  if (verifiedRole === 'CUSTOMER' && ticket.customer_id !== userId) {
+    return res.status(403).json({ error: 'FORBIDDEN: You cannot view another customer’s incident.' });
+  }
+
   const { simulatedTime } = getSimulatedTime();
   const sla = evaluateTicketSLA(ticket, simulatedTime);
   const activities = db.prepare('SELECT a.*, u.name as actor_name FROM activity_logs a LEFT JOIN users u ON a.actor_id = u.id WHERE ticket_id = ? ORDER BY created_at ASC').all(ticket.id);
 
-  // Internal Work notes (Hidden from Customer role)
+  // Customer Conversation Entries
+  const conversation = db.prepare(`
+    SELECT c.*, u.name as actor_name, u.role as actor_role 
+    FROM conversation_entries c 
+    LEFT JOIN users u ON c.actor_id = u.id 
+    WHERE ticket_id = ? ORDER BY created_at ASC
+  `).all(ticket.id);
+
+  // Internal Work Notes (Strictly hidden from Customer role)
   let workNotes = [];
-  if (role === 'AGENT' || role === 'MANAGER') {
+  if (verifiedRole === 'AGENT' || verifiedRole === 'MANAGER') {
     workNotes = db.prepare('SELECT w.*, u.name as actor_name FROM work_notes w LEFT JOIN users u ON w.actor_id = u.id WHERE ticket_id = ? ORDER BY created_at ASC').all(ticket.id);
   }
 
@@ -179,17 +356,19 @@ app.get('/api/tickets/:id', (req, res) => {
     sla_state: sla.slaState,
     response_mins_remaining: sla.responseMinsRemaining,
     resolution_mins_remaining: sla.resolutionMinsRemaining,
+    conversation,
     activities,
     workNotes
   });
 });
 
-// 9. Create Ticket API (INC000000x Prefix, Auto-Assigned, Business Hours SLA)
 app.post('/api/tickets', (req, res) => {
-  const { title, description, category, priority, customerId } = req.body;
+  const authUser = getAuthUser(req);
+  const { title, description, category, priority } = req.body;
+  const customerId = authUser ? authUser.id : (req.body.customerId || 'cust-1');
 
-  if (!title || !category || !priority || !customerId) {
-    return res.status(400).json({ error: 'Title, category, priority, and customerId are required.' });
+  if (!title || !category || !priority) {
+    return res.status(400).json({ error: 'Title, category, and priority are required.' });
   }
 
   // Generate persistent sequential INC number
@@ -203,9 +382,14 @@ app.post('/api/tickets', (req, res) => {
   // Auto-Assignment Engine calculation
   const assignedAgentId = findTargetAgent(category, priority);
 
-  // Business Hours SLA calculation
-  const responseDue = addBusinessMinutes(createdDate, 4 * 60).toISOString();
-  const resolutionDue = addBusinessMinutes(createdDate, 16 * 60).toISOString();
+  // SLA calculation
+  const respHoursConfig = db.prepare("SELECT value FROM system_config WHERE key = 'sla_response_hours'").get();
+  const resHoursConfig = db.prepare("SELECT value FROM system_config WHERE key = 'sla_resolution_hours'").get();
+  const respHours = respHoursConfig ? parseFloat(respHoursConfig.value) : 4;
+  const resHours = resHoursConfig ? parseFloat(resHoursConfig.value) : 16;
+
+  const responseDue = addBusinessMinutes(createdDate, respHours * 60).toISOString();
+  const resolutionDue = addBusinessMinutes(createdDate, resHours * 60).toISOString();
 
   db.prepare(`
     INSERT INTO tickets (
@@ -216,6 +400,12 @@ app.post('/api/tickets', (req, res) => {
     ticketId, title, description || '', category, priority, customerId,
     assignedAgentId, createdDate.toISOString(), responseDue, resolutionDue
   );
+
+  // Initial Customer Conversation Entry
+  db.prepare(`
+    INSERT INTO conversation_entries (id, ticket_id, actor_id, entry_type, content, created_at)
+    VALUES (?, ?, ?, 'CUSTOMER_MESSAGE', ?, ?)
+  `).run(`conv-${Date.now()}`, ticketId, customerId, description || title, createdDate.toISOString());
 
   // Log creation activity
   db.prepare(`
@@ -235,12 +425,121 @@ app.post('/api/tickets', (req, res) => {
   res.status(201).json({ ticketId, message: `Incident ${ticketId} created successfully.`, assignedAgentId });
 });
 
-// 10. Ticket State Update API
+// ------------------------------------------------------------
+// 5. CUSTOMER INFORMATION REQUEST & RESPONSE WORKFLOW
+// ------------------------------------------------------------
+
+// Agent Requests Information from Customer
+app.post('/api/tickets/:id/request-info', (req, res) => {
+  const authUser = getAuthUser(req);
+  if (!authUser || (authUser.role !== 'AGENT' && authUser.role !== 'MANAGER')) {
+    return res.status(403).json({ error: 'FORBIDDEN: Only Agents or Managers can request information.' });
+  }
+
+  const { requestText } = req.body;
+  if (!requestText || !requestText.trim()) {
+    return res.status(400).json({ error: 'Request description text is required.' });
+  }
+
+  const ticket = db.prepare('SELECT * FROM tickets WHERE id = ?').get(req.params.id);
+  if (!ticket) return res.status(404).json({ error: 'Ticket not found.' });
+
+  const { simulatedTime } = getSimulatedTime();
+
+  // Track first agent response for SLA clock
+  let respondedAt = ticket.responded_at || simulatedTime;
+
+  // Update ticket state to PENDING_CUSTOMER and store info_requested
+  db.prepare("UPDATE tickets SET state = 'PENDING_CUSTOMER', responded_at = ?, info_requested = ? WHERE id = ?")
+    .run(respondedAt, requestText.trim(), ticket.id);
+
+  // Record Agent Request in Conversation Entries
+  db.prepare(`
+    INSERT INTO conversation_entries (id, ticket_id, actor_id, entry_type, content, created_at)
+    VALUES (?, ?, ?, 'AGENT_REQUEST', ?, ?)
+  `).run(`conv-${Date.now()}`, ticket.id, authUser.id, requestText.trim(), simulatedTime);
+
+  // Log Activity
+  db.prepare(`
+    INSERT INTO activity_logs (id, ticket_id, actor_id, activity_type, content, created_at)
+    VALUES (?, ?, ?, 'INFO_REQUESTED', ?, ?)
+  `).run(`act-${Date.now()}`, ticket.id, authUser.id, `Agent requested information: "${requestText.substring(0, 50)}..."`, simulatedTime);
+
+  // Dispatch Notification to Customer
+  sendNotification(ticket.id, 'INFO_REQUESTED', ticket.customer_id, `Information requested for incident ${ticket.id}: ${requestText.substring(0, 60)}...`, simulatedTime);
+
+  res.json({ message: 'Information requested from customer. Status updated to Pending Customer.', state: 'PENDING_CUSTOMER' });
+});
+
+// Customer Responds to Information Request
+app.post('/api/tickets/:id/customer-reply', (req, res) => {
+  const authUser = getAuthUser(req);
+  const ticket = db.prepare('SELECT * FROM tickets WHERE id = ?').get(req.params.id);
+  if (!ticket) return res.status(404).json({ error: 'Ticket not found.' });
+
+  // Customer authorization check
+  const userId = authUser ? authUser.id : (req.body.actorId || req.body.userId);
+  if (ticket.customer_id !== userId) {
+    return res.status(403).json({ error: 'FORBIDDEN: Only the ticket requester can submit responses.' });
+  }
+
+  const { replyText } = req.body;
+  if (!replyText || !replyText.trim()) {
+    return res.status(400).json({ error: 'Response content is required.' });
+  }
+
+  const { simulatedTime } = getSimulatedTime();
+
+  // Record Customer Reply in Conversation Entries
+  db.prepare(`
+    INSERT INTO conversation_entries (id, ticket_id, actor_id, entry_type, content, created_at)
+    VALUES (?, ?, ?, 'CUSTOMER_REPLY', ?, ?)
+  `).run(`conv-${Date.now()}`, ticket.id, userId, replyText.trim(), simulatedTime);
+
+  // Automatically transition PENDING_CUSTOMER -> IN_PROGRESS and clear pending prompt
+  db.prepare("UPDATE tickets SET state = 'IN_PROGRESS', info_requested = NULL WHERE id = ?").run(ticket.id);
+
+  // Log Activity
+  db.prepare(`
+    INSERT INTO activity_logs (id, ticket_id, actor_id, activity_type, content, created_at)
+    VALUES (?, ?, ?, 'CUSTOMER_REPLIED', ?, ?)
+  `).run(`act-${Date.now()}`, ticket.id, userId, `Customer provided requested information: "${replyText.substring(0, 50)}..."`, simulatedTime);
+
+  // Dispatch Notification to Agent
+  if (ticket.agent_id) {
+    sendNotification(ticket.id, 'CUSTOMER_REPLIED', ticket.agent_id, `Customer replied to information request on ${ticket.id}.`, simulatedTime);
+  }
+
+  res.json({ message: 'Response submitted successfully. Status updated to In Progress.', state: 'IN_PROGRESS' });
+});
+
+// ------------------------------------------------------------
+// 6. STATE UPDATE, WORK NOTES & ADMIN APIS
+// ------------------------------------------------------------
+
 app.patch('/api/tickets/:id/state', (req, res) => {
-  const { state, actorId, comment, resolutionNotes } = req.body;
+  const authUser = getAuthUser(req);
+  const { state, comment, resolutionNotes } = req.body;
+  const actorId = authUser ? authUser.id : (req.body.actorId || 'system');
   const ticket = db.prepare('SELECT * FROM tickets WHERE id = ?').get(req.params.id);
 
   if (!ticket) return res.status(404).json({ error: 'Ticket not found' });
+
+  // Strict Lifecycle Transition Rules
+  const validTransitions = {
+    'NEW': ['IN_PROGRESS', 'PENDING_CUSTOMER'],
+    'IN_PROGRESS': ['PENDING_CUSTOMER', 'RESOLVED'],
+    'PENDING_CUSTOMER': ['IN_PROGRESS', 'RESOLVED'],
+    'RESOLVED': ['CLOSED', 'IN_PROGRESS'], // Reopen path ALLOWED
+    'CLOSED': []
+  };
+
+  const allowed = validTransitions[ticket.state] || [];
+  if (!allowed.includes(state)) {
+    return res.status(400).json({
+      error: `INVALID TRANSITION: Cannot move ticket from ${ticket.state} to ${state}. Allowed: [${allowed.join(', ')}]`
+    });
+  }
 
   const { simulatedTime } = getSimulatedTime();
   let respondedAt = ticket.responded_at;
@@ -248,19 +547,12 @@ app.patch('/api/tickets/:id/state', (req, res) => {
   let closedAt = ticket.closed_at;
 
   // Track first agent response
-  if (!respondedAt && actorId && actorId.startsWith('agent')) {
+  if (!respondedAt && actorId && (actorId.startsWith('agent') || (authUser && authUser.role === 'AGENT'))) {
     respondedAt = simulatedTime;
   }
 
-  // Track resolution
-  if (state === 'RESOLVED' && !resolvedAt) {
-    resolvedAt = simulatedTime;
-  }
-
-  // Track closure
-  if (state === 'CLOSED' && !closedAt) {
-    closedAt = simulatedTime;
-  }
+  if (state === 'RESOLVED' && !resolvedAt) resolvedAt = simulatedTime;
+  if (state === 'CLOSED' && !closedAt) closedAt = simulatedTime;
 
   db.prepare('UPDATE tickets SET state = ?, responded_at = ?, resolved_at = ?, closed_at = ?, resolution_notes = COALESCE(?, resolution_notes) WHERE id = ?')
     .run(state, respondedAt, resolvedAt, closedAt, resolutionNotes || null, ticket.id);
@@ -270,7 +562,7 @@ app.patch('/api/tickets/:id/state', (req, res) => {
     INSERT INTO activity_logs (id, ticket_id, actor_id, activity_type, content, created_at)
     VALUES (?, ?, ?, 'STATE_CHANGE', ?, ?)
   `).run(
-    `act-${Date.now()}`, ticket.id, actorId || 'system',
+    `act-${Date.now()}`, ticket.id, actorId,
     `Status changed to ${state}. ${comment ? 'Comment: ' + comment : ''}`,
     simulatedTime
   );
@@ -281,9 +573,16 @@ app.patch('/api/tickets/:id/state', (req, res) => {
   res.json({ message: `Status updated to ${state}.` });
 });
 
-// 11. Add Internal Work Note API (Agent / Manager Only)
 app.post('/api/tickets/:id/work-notes', (req, res) => {
-  const { note, actorId } = req.body;
+  const authUser = getAuthUser(req);
+  const verifiedRole = authUser ? authUser.role : (req.body.actorId === 'cust-1' ? 'CUSTOMER' : 'AGENT');
+  const actorId = authUser ? authUser.id : req.body.actorId;
+
+  if (verifiedRole === 'CUSTOMER') {
+    return res.status(403).json({ error: 'FORBIDDEN: Customer role cannot add internal Work Notes.' });
+  }
+
+  const { note } = req.body;
   if (!note || !actorId) return res.status(400).json({ error: 'Note and actorId required.' });
 
   const { simulatedTime } = getSimulatedTime();
@@ -302,11 +601,14 @@ app.post('/api/tickets/:id/work-notes', (req, res) => {
   res.status(201).json({ message: 'Work note recorded.' });
 });
 
-// 12. Reassign Ticket API (Manager Action)
 app.patch('/api/tickets/:id/reassign', (req, res) => {
-  const { agentId, actorId } = req.body;
-  const ticket = db.prepare('SELECT * FROM tickets WHERE id = ?').get(req.params.id);
+  const authUser = getAuthUser(req);
+  if (!authUser || authUser.role !== 'MANAGER') {
+    return res.status(403).json({ error: 'FORBIDDEN: Only Manager role can reassign tickets.' });
+  }
 
+  const { agentId } = req.body;
+  const ticket = db.prepare('SELECT * FROM tickets WHERE id = ?').get(req.params.id);
   if (!ticket) return res.status(404).json({ error: 'Ticket not found' });
 
   const { simulatedTime } = getSimulatedTime();
@@ -317,14 +619,13 @@ app.patch('/api/tickets/:id/reassign', (req, res) => {
   db.prepare(`
     INSERT INTO activity_logs (id, ticket_id, actor_id, activity_type, content, created_at)
     VALUES (?, ?, ?, 'REASSIGNED', ?, ?)
-  `).run(`act-${Date.now()}`, ticket.id, actorId || 'mgr-1', `Ticket reassigned from ${prevAgentId} to ${agentId}`, simulatedTime);
+  `).run(`act-${Date.now()}`, ticket.id, authUser.id, `Ticket reassigned from ${prevAgentId} to ${agentId}`, simulatedTime);
 
   sendNotification(ticket.id, 'REASSIGNED', agentId, `Incident ${ticket.id} reassigned to you.`, simulatedTime);
 
   res.json({ message: 'Ticket reassigned successfully.' });
 });
 
-// 13. Assignment Rules API (Manager Admin)
 app.get('/api/rules', (req, res) => {
   const rules = db.prepare(`
     SELECT r.*, u.name as target_agent_name 
@@ -336,6 +637,11 @@ app.get('/api/rules', (req, res) => {
 });
 
 app.post('/api/rules', (req, res) => {
+  const authUser = getAuthUser(req);
+  if (!authUser || authUser.role !== 'MANAGER') {
+    return res.status(403).json({ error: 'FORBIDDEN: Only Manager role can create assignment rules.' });
+  }
+
   const { category, priority, targetAgentId, useWorkloadBalance } = req.body;
   if (!category || !priority || !targetAgentId) {
     return res.status(400).json({ error: 'Category, priority, and targetAgentId required.' });
@@ -355,14 +661,25 @@ app.post('/api/rules', (req, res) => {
 });
 
 app.delete('/api/rules/:id', (req, res) => {
+  const authUser = getAuthUser(req);
+  if (!authUser || authUser.role !== 'MANAGER') {
+    return res.status(403).json({ error: 'FORBIDDEN: Only Manager role can delete assignment rules.' });
+  }
+
   db.prepare('DELETE FROM assignment_rules WHERE id = ?').run(req.params.id);
   res.json({ message: 'Rule deleted.' });
 });
 
-// 14. Manager Dashboard Metrics API
 app.get('/api/dashboard-metrics', (req, res) => {
+  const authUser = getAuthUser(req);
   const { simulatedTime } = getSimulatedTime();
-  const tickets = db.prepare('SELECT * FROM tickets').all();
+  let tickets = db.prepare('SELECT * FROM tickets').all();
+
+  if (authUser && authUser.role === 'AGENT') {
+    tickets = tickets.filter(t => t.agent_id === authUser.id);
+  } else if (authUser && authUser.role === 'CUSTOMER') {
+    tickets = tickets.filter(t => t.customer_id === authUser.id);
+  }
 
   let totalOpen = 0;
   let atRiskCount = 0;

@@ -5,13 +5,22 @@ const dbPath = path.join(__dirname, 'deskflow.db');
 const db = new Database(dbPath);
 db.pragma('journal_mode = WAL');
 
-// Pure DeskFlow IMS Database Schema + Phase 4 Extensions
+// Pure DeskFlow IMS Database Schema + Authentication + Conversation Tables
 db.exec(`
   CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY,
+    username TEXT UNIQUE,
     name TEXT NOT NULL,
     email TEXT NOT NULL,
-    role TEXT NOT NULL CHECK(role IN ('CUSTOMER', 'AGENT', 'MANAGER'))
+    role TEXT NOT NULL CHECK(role IN ('CUSTOMER', 'AGENT', 'MANAGER')),
+    password_hash TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS sessions (
+    token TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(user_id) REFERENCES users(id)
   );
 
   CREATE TABLE IF NOT EXISTS assignment_rules (
@@ -42,8 +51,20 @@ db.exec(`
     closed_at TEXT,
     is_escalated INTEGER NOT NULL DEFAULT 0,
     resolution_notes TEXT,
+    info_requested TEXT,
     FOREIGN KEY(customer_id) REFERENCES users(id),
     FOREIGN KEY(agent_id) REFERENCES users(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS conversation_entries (
+    id TEXT PRIMARY KEY,
+    ticket_id TEXT NOT NULL,
+    actor_id TEXT NOT NULL,
+    entry_type TEXT NOT NULL CHECK(entry_type IN ('CUSTOMER_MESSAGE', 'AGENT_REQUEST', 'CUSTOMER_REPLY')),
+    content TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(ticket_id) REFERENCES tickets(id),
+    FOREIGN KEY(actor_id) REFERENCES users(id)
   );
 
   CREATE TABLE IF NOT EXISTS work_notes (
@@ -90,11 +111,10 @@ db.exec(`
   );
 `);
 
-// Safe column addition for existing sqlite file
-try {
-  db.exec('ALTER TABLE assignment_rules ADD COLUMN use_workload_balance INTEGER NOT NULL DEFAULT 0');
-} catch (e) {
-  // Column already exists
-}
+// Safe column additions for existing sqlite file
+try { db.exec('ALTER TABLE users ADD COLUMN username TEXT'); } catch (e) {}
+try { db.exec('ALTER TABLE users ADD COLUMN password_hash TEXT'); } catch (e) {}
+try { db.exec('ALTER TABLE tickets ADD COLUMN info_requested TEXT'); } catch (e) {}
+try { db.exec('ALTER TABLE assignment_rules ADD COLUMN use_workload_balance INTEGER NOT NULL DEFAULT 0'); } catch (e) {}
 
 module.exports = db;

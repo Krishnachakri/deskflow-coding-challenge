@@ -8,8 +8,34 @@ function seedDemoTickets() {
   db.exec('DELETE FROM holidays');
   db.exec('DELETE FROM notifications');
   db.exec('DELETE FROM work_notes');
+  db.exec('DELETE FROM conversation_entries');
   db.exec('DELETE FROM activity_logs');
   db.exec('DELETE FROM tickets');
+  db.exec('DELETE FROM assignment_rules');
+  db.exec('DELETE FROM sessions');
+  db.exec('DELETE FROM users');
+
+  // Seed Pre-defined Demo Users with Hashed Credentials
+  const insertUser = db.prepare(`
+    INSERT INTO users (id, username, name, email, role, password_hash)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `);
+
+  insertUser.run('cust-1', 'customer1', 'Carol Customer', 'carol@deskflow.local', 'CUSTOMER', 'hash_customer1');
+  insertUser.run('cust-2', 'customer2', 'Charlie Customer', 'charlie@deskflow.local', 'CUSTOMER', 'hash_customer2');
+  insertUser.run('agent-1', 'agent1', 'Alice Agent', 'alice@deskflow.local', 'AGENT', 'hash_agent1');
+  insertUser.run('agent-2', 'agent2', 'Dave Agent', 'dave@deskflow.local', 'AGENT', 'hash_agent2');
+  insertUser.run('mgr-1', 'manager1', 'Bob Manager', 'bob@deskflow.local', 'MANAGER', 'hash_manager1');
+
+  // Re-seed default assignment rules if table is empty
+  const rulesCount = db.prepare('SELECT COUNT(*) as c FROM assignment_rules').get().c;
+  if (rulesCount === 0) {
+    const insertRule = db.prepare('INSERT INTO assignment_rules (id, rule_order, category, priority, target_agent_id, is_active, use_workload_balance) VALUES (?, ?, ?, ?, ?, 1, ?)');
+    insertRule.run('rule-1', 1, 'SOFTWARE', 'P1', 'agent-2', 0);
+    insertRule.run('rule-2', 2, 'HARDWARE', 'P2', 'agent-1', 0);
+    insertRule.run('rule-3', 3, 'BILLING', 'ALL', 'agent-1', 0);
+    insertRule.run('rule-4', 4, 'ALL', 'P4', 'agent-2', 0);
+  }
 
   const insertTicket = db.prepare(`
     INSERT INTO tickets (
@@ -84,22 +110,24 @@ function seedDemoTickets() {
 
   insertActivity.run('act-004a', 'INC0000004', 'cust-1', 'CREATED', 'Incident INC0000004 raised by Carol Customer', ticket4Created.toISOString());
 
-  // 5. INC0000005 (OTHER - P4 - NORMAL)
+  // 5. INC0000005 (OTHER - P4 - NORMAL) - Belongs to Charlie Customer (cust-2)
   const ticket5Created = new Date(now.getTime() - (20 * 60 * 1000));
   const ticket5ResponseDue = addBusinessMinutes(now, 220).toISOString();
   const ticket5ResolutionDue = addBusinessMinutes(now, 15.8 * 60).toISOString();
 
   insertTicket.run(
     'INC0000005', 'Request for additional monitor cable', 'Need DisplayPort cable for workstation setup.',
-    'OTHER', 'P4', 'NEW', 'cust-1', 'agent-2',
+    'OTHER', 'P4', 'NEW', 'cust-2', 'agent-2',
     ticket5Created.toISOString(), ticket5ResponseDue, ticket5ResolutionDue, null, null, null, 0, null
   );
 
-  insertActivity.run('act-005a', 'INC0000005', 'cust-1', 'CREATED', 'Incident INC0000005 raised by Carol Customer', ticket5Created.toISOString());
+  insertActivity.run('act-005a', 'INC0000005', 'cust-2', 'CREATED', 'Incident INC0000005 raised by Charlie Customer', ticket5Created.toISOString());
 
-  console.log('Seeded DeskFlow demo tickets: INC0000001 (At Risk), INC0000002 (Overdue), INC0000003 (Normal), INC0000004 (Normal), INC0000005 (Normal).');
+  console.log('Seeded DeskFlow demo tickets: INC0000001 (At Risk), INC0000002 (Overdue), INC0000003 (Normal), INC0000004 (Normal), INC0000005 (Normal for cust-2).');
 }
 
-seedDemoTickets();
+if (require.main === module) {
+  seedDemoTickets();
+}
 
 module.exports = seedDemoTickets;
