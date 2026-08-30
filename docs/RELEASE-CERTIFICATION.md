@@ -5,6 +5,7 @@
 - **Application Name**: DeskFlow
 - **Version**: `1.0.0`
 - **Release Tag**: `v1.0.0`
+- **Commit Hash**: `58cabab`
 - **Release Date**: August 30, 2026
 
 ---
@@ -37,6 +38,7 @@ DEEP QA             : PASS
 SECURITY / SECRETS  : PASS
 GIT HYGIENE         : PASS
 REMOTE              : https://github.com/Krishnachakri/deskflow-coding-challenge.git
+COMMIT              : 58cabab
 VERSION             : 1.0.0
 TAG                 : v1.0.0
 WORKTREE            : CLEAN
