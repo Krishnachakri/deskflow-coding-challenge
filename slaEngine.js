@@ -1,170 +1,145 @@
 /**
- * DeskFlow Business-Hours SLA Engine
- * Business Hours: Monday-Friday, 09:00 to 17:00 (8 hours/day = 480 minutes/day)
- * Response SLA: 4 working hours (240 working minutes)
- * Resolution SLA: 2 working days (16 working hours = 960 working minutes)
+ * DeskFlow Business-Hours SLA Engine & Holiday Calendar Abstraction
+ * - Working Hours: Monday-Friday 09:00 to 17:00 (8 hours/day = 480 working mins/day)
+ * - Response SLA: 4 working hours (240 working mins)
+ * - Resolution SLA: 2 working days (16 working hours = 960 working mins)
+ * - Skips weekends and configured active holidays cleanly
  */
 
-const WORK_START_HOUR = 9;  // 09:00
-const WORK_END_HOUR = 17;   // 17:00
-const WORK_MINUTES_PER_DAY = (WORK_END_HOUR - WORK_START_HOUR) * 60; // 480 mins
+const db = require('./db');
 
-/**
- * Checks if a date falls on a working day (Mon-Fri)
- */
-function isWorkDay(date) {
-  const day = date.getDay(); // 0 = Sun, 6 = Sat
-  return day >= 1 && day <= 5;
+function isWorkingDay(date) {
+  const day = date.getDay();
+  if (day === 0 || day === 6) return false; // Weekend
+
+  // Check active holidays table
+  const isoDateStr = date.toISOString().split('T')[0];
+  const holiday = db.prepare('SELECT id FROM holidays WHERE holiday_date = ? AND is_active = 1').get(isoDateStr);
+  if (holiday) return false;
+
+  return true;
 }
 
-/**
- * Adjusts a date forward to the nearest working time slot if outside working hours.
- */
-function normalizeToWorkingTime(date) {
-  const result = new Date(date);
-  
-  while (true) {
-    const day = result.getDay();
-    const hours = result.getHours();
-
-    // Weekend check -> move to Monday 09:00
-    if (day === 6) { // Saturday
-      result.setDate(result.getDate() + 2);
-      result.setHours(WORK_START_HOUR, 0, 0, 0);
-      continue;
-    }
-    if (day === 0) { // Sunday
-      result.setDate(result.getDate() + 1);
-      result.setHours(WORK_START_HOUR, 0, 0, 0);
-      continue;
-    }
-
-    // Before work start -> set to 09:00 same day
-    if (hours < WORK_START_HOUR) {
-      result.setHours(WORK_START_HOUR, 0, 0, 0);
-      break;
-    }
-
-    // After work end -> set to 09:00 next day
-    if (hours >= WORK_END_HOUR) {
-      result.setDate(result.getDate() + 1);
-      result.setHours(WORK_START_HOUR, 0, 0, 0);
-      continue;
-    }
-
-    break;
-  }
-  
-  return result;
+function isWorkingTime(date) {
+  if (!isWorkingDay(date)) return false;
+  const hours = date.getHours();
+  return hours >= 9 && hours < 17;
 }
 
-/**
- * Adds business minutes to a starting Date object.
- */
 function addBusinessMinutes(startDate, minutesToAdd) {
-  let curr = normalizeToWorkingTime(new Date(startDate));
+  let curr = new Date(startDate);
   let remainingMins = minutesToAdd;
 
   while (remainingMins > 0) {
-    const currentEnd = new Date(curr);
-    currentEnd.setHours(WORK_END_HOUR, 0, 0, 0);
+    if (!isWorkingDay(curr)) {
+      curr.setDate(curr.getDate() + 1);
+      curr.setHours(9, 0, 0, 0);
+      continue;
+    }
 
-    const availableMinsInDay = Math.floor((currentEnd.getTime() - curr.getTime()) / 60000);
+    const hours = curr.getHours();
+    const mins = curr.getMinutes();
 
-    if (remainingMins <= availableMinsInDay) {
-      curr = new Date(curr.getTime() + remainingMins * 60000);
+    if (hours < 9) {
+      curr.setHours(9, 0, 0, 0);
+      continue;
+    }
+
+    if (hours >= 17) {
+      curr.setDate(curr.getDate() + 1);
+      curr.setHours(9, 0, 0, 0);
+      continue;
+    }
+
+    const minsUntilClose = (17 - hours) * 60 - mins;
+
+    if (remainingMins <= minsUntilClose) {
+      curr.setMinutes(curr.getMinutes() + remainingMins);
       remainingMins = 0;
     } else {
-      remainingMins -= availableMinsInDay;
-      // Advance to next morning 09:00
+      remainingMins -= minsUntilClose;
       curr.setDate(curr.getDate() + 1);
-      curr.setHours(WORK_START_HOUR, 0, 0, 0);
-      curr = normalizeToWorkingTime(curr);
+      curr.setHours(9, 0, 0, 0);
     }
   }
 
   return curr;
 }
 
-/**
- * Calculates remaining working minutes between now and a future target date.
- */
-function getRemainingBusinessMinutes(nowDate, dueDate) {
-  const now = new Date(nowDate);
-  const due = new Date(dueDate);
+function calculateBusinessMinutesBetween(startDate, endDate) {
+  let curr = new Date(startDate);
+  const end = new Date(endDate);
+  if (curr >= end) return 0;
 
-  if (now >= due) {
-    return -Math.floor((now.getTime() - due.getTime()) / 60000); // negative remaining mins
-  }
-
-  let curr = normalizeToWorkingTime(now);
   let totalMins = 0;
 
-  while (curr < due) {
-    const dayEnd = new Date(curr);
-    dayEnd.setHours(WORK_END_HOUR, 0, 0, 0);
-
-    const endBoundary = due < dayEnd ? due : dayEnd;
-    const minsInChunk = Math.floor((endBoundary.getTime() - curr.getTime()) / 60000);
-    
-    if (minsInChunk > 0) {
-      totalMins += minsInChunk;
+  while (curr < end) {
+    if (!isWorkingDay(curr)) {
+      curr.setDate(curr.getDate() + 1);
+      curr.setHours(9, 0, 0, 0);
+      continue;
     }
 
-    if (endBoundary >= due) {
+    const hours = curr.getHours();
+    if (hours < 9) {
+      curr.setHours(9, 0, 0, 0);
+      continue;
+    }
+    if (hours >= 17) {
+      curr.setDate(curr.getDate() + 1);
+      curr.setHours(9, 0, 0, 0);
+      continue;
+    }
+
+    const minsUntilClose = (17 - hours) * 60 - curr.getMinutes();
+    const minsUntilEnd = Math.floor((end.getTime() - curr.getTime()) / (1000 * 60));
+
+    if (minsUntilEnd <= minsUntilClose) {
+      totalMins += minsUntilEnd;
       break;
+    } else {
+      totalMins += minsUntilClose;
+      curr.setDate(curr.getDate() + 1);
+      curr.setHours(9, 0, 0, 0);
     }
-
-    // Move to next work day start
-    curr.setDate(curr.getDate() + 1);
-    curr.setHours(WORK_START_HOUR, 0, 0, 0);
-    curr = normalizeToWorkingTime(curr);
   }
 
   return totalMins;
 }
 
-/**
- * Evaluates ticket SLA targets given current system/simulated time.
- */
-function evaluateTicketSLA(ticket, currentTimeStr) {
-  const now = new Date(currentTimeStr);
-  const responseDue = new Date(ticket.response_due_at);
-  const resolutionDue = new Date(ticket.resolution_due_at);
+function evaluateTicketSLA(ticket, currentSimulatedTimeISO) {
+  const now = new Date(currentSimulatedTimeISO || new Date().toISOString());
 
+  // Response SLA Evaluation
   let responseMinsRemaining = null;
-  let resolutionMinsRemaining = null;
-
-  // 1. Response SLA evaluation
   if (!ticket.responded_at) {
-    responseMinsRemaining = getRemainingBusinessMinutes(now, responseDue);
-  }
-
-  // 2. Resolution SLA evaluation
-  if (ticket.state !== 'RESOLVED' && ticket.state !== 'CLOSED') {
-    resolutionMinsRemaining = getRemainingBusinessMinutes(now, resolutionDue);
-  }
-
-  // Determine SLA status
-  let slaState = 'NORMAL';
-  let isEscalated = ticket.is_escalated === 1;
-
-  // Check if breached (Overdue)
-  const isResponseOverdue = responseMinsRemaining !== null && responseMinsRemaining <= 0;
-  const isResolutionOverdue = resolutionMinsRemaining !== null && resolutionMinsRemaining <= 0;
-
-  if (isResponseOverdue || isResolutionOverdue) {
-    slaState = 'OVERDUE';
-  } else {
-    // Check if At Risk (<= 60 working minutes remaining)
-    const isResponseAtRisk = responseMinsRemaining !== null && responseMinsRemaining <= 60;
-    const isResolutionAtRisk = resolutionMinsRemaining !== null && resolutionMinsRemaining <= 60;
-
-    if (isResponseAtRisk || isResolutionAtRisk) {
-      slaState = 'AT_RISK';
-      isEscalated = true; // Auto-escalate on AT_RISK as per approved blueprint
+    const responseDue = new Date(ticket.response_due_at);
+    if (now >= responseDue) {
+      responseMinsRemaining = -calculateBusinessMinutesBetween(responseDue, now);
+    } else {
+      responseMinsRemaining = calculateBusinessMinutesBetween(now, responseDue);
     }
   }
+
+  // Resolution SLA Evaluation
+  let resolutionMinsRemaining = null;
+  if (!ticket.resolved_at && !ticket.closed_at) {
+    const resolutionDue = new Date(ticket.resolution_due_at);
+    if (now >= resolutionDue) {
+      resolutionMinsRemaining = -calculateBusinessMinutesBetween(resolutionDue, now);
+    } else {
+      resolutionMinsRemaining = calculateBusinessMinutesBetween(now, resolutionDue);
+    }
+  }
+
+  let slaState = 'NORMAL';
+  if ((responseMinsRemaining !== null && responseMinsRemaining <= 0) || (resolutionMinsRemaining !== null && resolutionMinsRemaining <= 0)) {
+    slaState = 'OVERDUE';
+  } else if ((responseMinsRemaining !== null && responseMinsRemaining <= 60) || (resolutionMinsRemaining !== null && resolutionMinsRemaining <= 60)) {
+    slaState = 'AT_RISK';
+  }
+
+  const isEscalated = ticket.is_escalated === 1 || slaState === 'AT_RISK' || slaState === 'OVERDUE';
 
   return {
     slaState,
@@ -175,8 +150,9 @@ function evaluateTicketSLA(ticket, currentTimeStr) {
 }
 
 module.exports = {
+  isWorkingDay,
+  isWorkingTime,
   addBusinessMinutes,
-  getRemainingBusinessMinutes,
-  evaluateTicketSLA,
-  normalizeToWorkingTime
+  calculateBusinessMinutesBetween,
+  evaluateTicketSLA
 };

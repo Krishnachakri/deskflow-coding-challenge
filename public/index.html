@@ -19,6 +19,23 @@
     </div>
 
     <div class="header-controls">
+      <!-- Search Input Bar -->
+      <div class="search-box" style="display:flex; align-items:center; gap:6px;">
+        <input type="text" id="searchInput" onkeyup="handleSearchKeyup(event)" placeholder="🔍 Search incidents..." style="padding:6px 12px; border:1px solid var(--border-focus); border-radius:6px; font-size:0.85rem; width:200px;">
+        <button onclick="triggerSearch()" class="btn-demo-action" style="background:var(--deskflow-blue); color:#fff;">Search</button>
+      </div>
+
+      <!-- Notification Bell -->
+      <div class="notif-box" style="position:relative;">
+        <button onclick="toggleNotificationPanel()" class="btn-demo-action" style="background:#f1f5f9; color:var(--text-main); font-size:0.85rem;">
+          🔔 Notifications <span id="notifBadgeCount" class="badge badge-inc" style="background:var(--deskflow-blue); color:#fff;">0</span>
+        </button>
+        <div id="notifDropdown" class="context-box hidden" style="position:absolute; right:0; top:36px; width:300px; z-index:200; box-shadow:0 10px 15px -3px rgba(0,0,0,0.1); background:#fff;">
+          <h4 style="margin-bottom:8px; font-size:0.8rem; color:var(--deskflow-blue);">NOTIFICATION LOG</h4>
+          <div id="notifList" style="max-height:220px; overflow-y:auto; font-size:0.8rem;"></div>
+        </div>
+      </div>
+
       <!-- Subordinate Demo Time Simulator Bar -->
       <div class="demo-time-box">
         <span>⏱️ Demo Time:</span>
@@ -68,6 +85,12 @@
       <h3>Auto-Escalated</h3>
       <div id="metricEscalated" class="val">0</div>
     </div>
+  </section>
+
+  <!-- Agent Workload Summary (Manager Only) -->
+  <section id="workloadSection" class="panel hidden" style="margin-bottom:20px; padding:16px;">
+    <h3 style="font-size:0.9rem; color:var(--deskflow-blue); margin-bottom:10px;">📊 AGENT ACTIVE WORKLOAD BALANCING</h3>
+    <div id="workloadGrid" style="display:flex; gap:16px;"></div>
   </section>
 
   <!-- Create Incident Form Section -->
@@ -175,11 +198,15 @@
           </select>
         </div>
         <div class="field-group">
-          <label>Assign to Agent</label>
+          <label>Target Agent / Mode</label>
           <select id="ruleTargetAgent">
             <option value="agent-1">Alice Agent</option>
             <option value="agent-2">Dave Agent</option>
           </select>
+        </div>
+        <div class="field-group" style="flex-direction:row; align-items:center; gap:8px;">
+          <input type="checkbox" id="ruleWorkloadBalance" style="width:auto;">
+          <label for="ruleWorkloadBalance" style="font-weight:normal;">Enable Workload Balancing</label>
         </div>
         <div class="field-group" style="justify-content:flex-end;">
           <button type="submit" class="btn-primary" style="padding:8px 16px;">Save Rule</button>
@@ -195,6 +222,7 @@
           <th>Category Criteria</th>
           <th>Priority Criteria</th>
           <th>Target Agent</th>
+          <th>Mode</th>
           <th>Status</th>
           <th>Action</th>
         </tr>

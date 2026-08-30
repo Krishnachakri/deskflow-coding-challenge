@@ -28,6 +28,7 @@ async function onRoleChange() {
   // Toggle Tab Visibility based on Role
   document.getElementById('tabDashboard').classList.toggle('hidden', isCustomer);
   document.getElementById('tabRules').classList.toggle('hidden', !isManager);
+  document.getElementById('workloadSection').classList.toggle('hidden', !isManager);
 
   // Set default view tab
   if (isCustomer) {
@@ -47,6 +48,7 @@ function switchNavTab(tabName) {
   const isManager = currentUser ? currentUser.role === 'MANAGER' : false;
 
   document.getElementById('managerDashboardSection').classList.toggle('hidden', tabName !== 'dashboard' || isCustomer);
+  document.getElementById('workloadSection').classList.toggle('hidden', tabName !== 'dashboard' || !isManager);
   document.getElementById('createTicketSection').classList.toggle('hidden', tabName !== 'create');
   document.getElementById('ticketQueueSection').classList.toggle('hidden', tabName !== 'queue' && tabName !== 'dashboard');
   document.getElementById('rulesSection').classList.toggle('hidden', tabName !== 'rules' || !isManager);
@@ -69,7 +71,9 @@ async function refreshAll() {
   if (currentUser.role === 'MANAGER') {
     await loadMetrics();
     await loadRules();
+    await loadWorkload();
   }
+  await loadNotifications();
   await loadTickets();
 }
 
@@ -106,6 +110,61 @@ async function loadMetrics() {
   document.getElementById('metricEscalated').innerText = metrics.escalatedCount;
 }
 
+// Load Agent Workload Balancing (Manager View)
+async function loadWorkload() {
+  const res = await fetch('/api/workload');
+  const agents = await res.json();
+  const container = document.getElementById('workloadGrid');
+  container.innerHTML = agents.map(a => `
+    <div style="background:#fff; border:1px solid var(--border-subtle); padding:10px 16px; border-radius:6px; flex:1;">
+      <strong style="color:var(--deskflow-blue);">${a.name}:</strong>
+      <span style="font-weight:bold; font-size:1.1rem; margin-left:8px;">${a.activeWorkload}</span> open tickets
+    </div>
+  `).join('');
+}
+
+// Load Log-Mode Notifications
+async function loadNotifications() {
+  if (!currentUser) return;
+  const res = await fetch(`/api/notifications?userId=${currentUser.id}`);
+  const notifs = await res.json();
+  
+  document.getElementById('notifBadgeCount').innerText = notifs.length;
+  const list = document.getElementById('notifList');
+  list.innerHTML = notifs.length === 0
+    ? '<p style="color:var(--text-muted); padding:8px;">No notifications.</p>'
+    : notifs.map(n => `
+        <div style="border-bottom:1px solid var(--border-subtle); padding:6px 0;">
+          <strong>[${n.event_type}]</strong> ${n.message}
+          <div style="font-size:0.7rem; color:var(--text-muted);">${new Date(n.created_at).toLocaleTimeString()}</div>
+        </div>
+      `).join('');
+}
+
+function toggleNotificationPanel() {
+  document.getElementById('notifDropdown').classList.toggle('hidden');
+}
+
+// Search Feature Integration
+function handleSearchKeyup(event) {
+  if (event.key === 'Enter') triggerSearch();
+}
+
+async function triggerSearch() {
+  const q = document.getElementById('searchInput').value.trim();
+  if (!q) {
+    await loadTickets();
+    return;
+  }
+
+  switchNavTab('queue');
+  const url = `/api/search?q=${encodeURIComponent(q)}&role=${currentUser.role}&userId=${currentUser.id}`;
+  const res = await fetch(url);
+  const tickets = await res.json();
+
+  renderTicketsList(tickets, `Search Results for "${q}"`);
+}
+
 // Map Backend States to Clean Enterprise UI Labels
 function getUIStateLabel(state) {
   switch(state) {
@@ -124,6 +183,13 @@ async function loadTickets() {
   const url = `/api/tickets?role=${currentUser.role}&userId=${currentUser.id}&filter=${filter}`;
   const res = await fetch(url);
   const tickets = await res.json();
+  renderTicketsList(tickets);
+}
+
+function renderTicketsList(tickets, customTitle) {
+  if (customTitle) {
+    document.getElementById('queuePanelTitle').innerText = customTitle;
+  }
 
   const tbody = document.getElementById('ticketsTableBody');
   tbody.innerHTML = '';
@@ -160,10 +226,7 @@ async function loadTickets() {
       }
     }
 
-    // Assignee Cell
     const assigneeName = ticket.agent_name || '<em>Unassigned</em>';
-
-    // Actions
     const actions = `<button onclick="inspectTicket('${ticket.id}')" class="btn-demo-action" style="background:var(--deskflow-blue); color:#fff;">Inspect</button>`;
 
     tr.innerHTML = `
@@ -303,7 +366,7 @@ async function submitStateChange(state) {
   let resolutionNotes = null;
   if (state === 'RESOLVED') {
     resolutionNotes = prompt('Enter Resolution Notes (required to resolve):', 'Issue verified and resolved successfully.');
-    if (!resolutionNotes) return; // Cancelled
+    if (!resolutionNotes) return;
   }
 
   await fetch(`/api/tickets/${activeTicketId}/state`, {
@@ -335,11 +398,13 @@ async function loadRules() {
 
   rules.forEach(rule => {
     const tr = document.createElement('tr');
+    const modeLabel = rule.use_workload_balance ? '<span class="badge badge-inc">WORKLOAD BALANCED</span>' : '<span class="badge badge-state">STATIC TARGET</span>';
     tr.innerHTML = `
       <td>#${rule.rule_order}</td>
       <td><strong>${rule.category}</strong></td>
       <td><strong>${rule.priority}</strong></td>
       <td>${rule.target_agent_name}</td>
+      <td>${modeLabel}</td>
       <td><span class="badge badge-normal">ACTIVE</span></td>
       <td><button onclick="handleDeleteRule('${rule.id}')" class="btn-demo-action" style="background:#fee2e2; color:#dc2626;">Delete</button></td>
     `;
@@ -352,11 +417,12 @@ async function handleAddRule(event) {
   const category = document.getElementById('ruleCategory').value;
   const priority = document.getElementById('rulePriority').value;
   const targetAgentId = document.getElementById('ruleTargetAgent').value;
+  const useWorkloadBalance = document.getElementById('ruleWorkloadBalance').checked;
 
   await fetch('/api/rules', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ category, priority, targetAgentId })
+    body: JSON.stringify({ category, priority, targetAgentId, useWorkloadBalance })
   });
 
   await loadRules();

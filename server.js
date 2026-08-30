@@ -2,7 +2,9 @@ const express = require('express');
 const path = require('path');
 const db = require('./db');
 const { addBusinessMinutes, evaluateTicketSLA } = require('./slaEngine');
-const { findTargetAgent } = require('./assignmentEngine');
+const { findTargetAgent, getAgentWorkload } = require('./assignmentEngine');
+const { searchIncidents } = require('./searchEngine');
+const { sendNotification, getNotificationsForUser } = require('./notificationService');
 
 const app = express();
 app.use(express.json());
@@ -46,7 +48,49 @@ app.post('/api/system-config/reset-time', (req, res) => {
   res.json({ message: 'Simulated time reset to real time.', ...getSimulatedTime() });
 });
 
-// 3. Tickets Queue API
+// 3. Phase 4 Search API
+app.get('/api/search', (req, res) => {
+  const { q, role, userId, category, priority, state, assignee } = req.query;
+  const results = searchIncidents(q, role, userId, category, priority, state, assignee);
+  res.json(results);
+});
+
+// 4. Phase 4 Notifications API
+app.get('/api/notifications', (req, res) => {
+  const { userId } = req.query;
+  if (!userId) return res.status(400).json({ error: 'userId required.' });
+  const notifications = getNotificationsForUser(userId);
+  res.json(notifications);
+});
+
+// 5. Phase 4 Agent Workload API
+app.get('/api/workload', (req, res) => {
+  const agents = db.prepare("SELECT id, name, email FROM users WHERE role = 'AGENT'").all();
+  const workload = agents.map(agent => ({
+    ...agent,
+    activeWorkload: getAgentWorkload(agent.id)
+  }));
+  res.json(workload);
+});
+
+// 6. Phase 4 Holiday Calendar API
+app.get('/api/holidays', (req, res) => {
+  const holidays = db.prepare('SELECT * FROM holidays ORDER BY holiday_date ASC').all();
+  res.json(holidays);
+});
+
+app.post('/api/holidays', (req, res) => {
+  const { holidayDate, name } = req.body;
+  if (!holidayDate || !name) return res.status(400).json({ error: 'holidayDate and name required.' });
+
+  const id = `hol-${Date.now()}`;
+  db.prepare('INSERT OR REPLACE INTO holidays (id, holiday_date, name, is_active) VALUES (?, ?, ?, 1)')
+    .run(id, holidayDate, name);
+
+  res.status(201).json({ message: 'Holiday added to business calendar.', id });
+});
+
+// 7. Tickets Queue API
 app.get('/api/tickets', (req, res) => {
   const { role, userId, filter } = req.query;
   const { simulatedTime } = getSimulatedTime();
@@ -80,6 +124,11 @@ app.get('/api/tickets', (req, res) => {
         INSERT INTO activity_logs (id, ticket_id, actor_id, activity_type, content, created_at)
         VALUES (?, ?, ?, 'SLA_ESCALATION', ?, ?)
       `).run(`act-esc-${Date.now()}`, ticket.id, 'mgr-1', 'Ticket automatically escalated due to At Risk SLA threshold', simulatedTime);
+
+      // Dispatch idempotent notification
+      if (ticket.agent_id) {
+        sendNotification(ticket.id, 'AT_RISK', ticket.agent_id, `Incident ${ticket.id} is AT RISK of breaching SLA!`, simulatedTime);
+      }
     }
 
     return {
@@ -102,7 +151,7 @@ app.get('/api/tickets', (req, res) => {
   res.json(filteredTickets);
 });
 
-// 4. Ticket Detail API (IMS Operational Workspace)
+// 8. Ticket Detail API (IMS Operational Workspace)
 app.get('/api/tickets/:id', (req, res) => {
   const { role } = req.query;
   const ticket = db.prepare(`
@@ -135,7 +184,7 @@ app.get('/api/tickets/:id', (req, res) => {
   });
 });
 
-// 5. Create Ticket API (INC000000x Prefix, Auto-Assigned, Business Hours SLA)
+// 9. Create Ticket API (INC000000x Prefix, Auto-Assigned, Business Hours SLA)
 app.post('/api/tickets', (req, res) => {
   const { title, description, category, priority, customerId } = req.body;
 
@@ -178,10 +227,15 @@ app.post('/api/tickets', (req, res) => {
     createdDate.toISOString()
   );
 
+  // Dispatch Notification
+  if (assignedAgentId) {
+    sendNotification(ticketId, 'ASSIGNED', assignedAgentId, `New Incident ${ticketId} assigned to you.`, simulatedTime);
+  }
+
   res.status(201).json({ ticketId, message: `Incident ${ticketId} created successfully.`, assignedAgentId });
 });
 
-// 6. Ticket State Update API
+// 10. Ticket State Update API
 app.patch('/api/tickets/:id/state', (req, res) => {
   const { state, actorId, comment, resolutionNotes } = req.body;
   const ticket = db.prepare('SELECT * FROM tickets WHERE id = ?').get(req.params.id);
@@ -221,10 +275,13 @@ app.patch('/api/tickets/:id/state', (req, res) => {
     simulatedTime
   );
 
+  // Dispatch Notification
+  sendNotification(ticket.id, state, ticket.customer_id, `Status of incident ${ticket.id} changed to ${state}.`, simulatedTime);
+
   res.json({ message: `Status updated to ${state}.` });
 });
 
-// 7. Add Internal Work Note API (Agent / Manager Only)
+// 11. Add Internal Work Note API (Agent / Manager Only)
 app.post('/api/tickets/:id/work-notes', (req, res) => {
   const { note, actorId } = req.body;
   if (!note || !actorId) return res.status(400).json({ error: 'Note and actorId required.' });
@@ -245,7 +302,7 @@ app.post('/api/tickets/:id/work-notes', (req, res) => {
   res.status(201).json({ message: 'Work note recorded.' });
 });
 
-// 8. Reassign Ticket API (Manager Action)
+// 12. Reassign Ticket API (Manager Action)
 app.patch('/api/tickets/:id/reassign', (req, res) => {
   const { agentId, actorId } = req.body;
   const ticket = db.prepare('SELECT * FROM tickets WHERE id = ?').get(req.params.id);
@@ -262,10 +319,12 @@ app.patch('/api/tickets/:id/reassign', (req, res) => {
     VALUES (?, ?, ?, 'REASSIGNED', ?, ?)
   `).run(`act-${Date.now()}`, ticket.id, actorId || 'mgr-1', `Ticket reassigned from ${prevAgentId} to ${agentId}`, simulatedTime);
 
+  sendNotification(ticket.id, 'REASSIGNED', agentId, `Incident ${ticket.id} reassigned to you.`, simulatedTime);
+
   res.json({ message: 'Ticket reassigned successfully.' });
 });
 
-// 9. Assignment Rules API (Manager Admin)
+// 13. Assignment Rules API (Manager Admin)
 app.get('/api/rules', (req, res) => {
   const rules = db.prepare(`
     SELECT r.*, u.name as target_agent_name 
@@ -277,7 +336,7 @@ app.get('/api/rules', (req, res) => {
 });
 
 app.post('/api/rules', (req, res) => {
-  const { category, priority, targetAgentId } = req.body;
+  const { category, priority, targetAgentId, useWorkloadBalance } = req.body;
   if (!category || !priority || !targetAgentId) {
     return res.status(400).json({ error: 'Category, priority, and targetAgentId required.' });
   }
@@ -285,11 +344,12 @@ app.post('/api/rules', (req, res) => {
   const maxOrderRow = db.prepare('SELECT MAX(rule_order) as max_order FROM assignment_rules').get();
   const nextOrder = (maxOrderRow.max_order || 0) + 1;
   const ruleId = `rule-${Date.now()}`;
+  const workloadFlag = useWorkloadBalance ? 1 : 0;
 
   db.prepare(`
-    INSERT INTO assignment_rules (id, rule_order, category, priority, target_agent_id, is_active)
-    VALUES (?, ?, ?, ?, ?, 1)
-  `).run(ruleId, nextOrder, category, priority, targetAgentId);
+    INSERT INTO assignment_rules (id, rule_order, category, priority, target_agent_id, is_active, use_workload_balance)
+    VALUES (?, ?, ?, ?, ?, 1, ?)
+  `).run(ruleId, nextOrder, category, priority, targetAgentId, workloadFlag);
 
   res.status(201).json({ message: 'Routing rule created successfully.', ruleId });
 });
@@ -299,7 +359,7 @@ app.delete('/api/rules/:id', (req, res) => {
   res.json({ message: 'Rule deleted.' });
 });
 
-// 10. Manager Dashboard Metrics API
+// 14. Manager Dashboard Metrics API
 app.get('/api/dashboard-metrics', (req, res) => {
   const { simulatedTime } = getSimulatedTime();
   const tickets = db.prepare('SELECT * FROM tickets').all();

@@ -4,7 +4,9 @@ const { addBusinessMinutes } = require('./slaEngine');
 function seedDemoTickets() {
   const now = new Date();
   
-  // Clean existing tables for deterministic demo
+  // Clean existing tables in correct order for foreign key constraints and isolated test state
+  db.exec('DELETE FROM holidays');
+  db.exec('DELETE FROM notifications');
   db.exec('DELETE FROM work_notes');
   db.exec('DELETE FROM activity_logs');
   db.exec('DELETE FROM tickets');
