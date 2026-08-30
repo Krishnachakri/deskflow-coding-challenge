@@ -3,6 +3,8 @@ node_modules/
 .env.*
 *.log
 *.db
+*.db-shm
+*.db-wal
 *.sqlite
 *.sqlite3
 .DS_Store
