@@ -2,6 +2,7 @@ const assert = require('assert');
 const http = require('http');
 const db = require('./db');
 const seedDemoTickets = require('./seedDemoData');
+const clearAllTicketsAndLogs = require('./clearTickets');
 
 const BASE_URL = 'http://localhost:3000';
 
@@ -261,6 +262,7 @@ async function runDeepSecurityAndGapSuite() {
   report.e2eScenario.push('6. Agent resolves ticket, Customer confirms & closes ticket cleanly.');
 
   console.log('\nFULL SUITE AUDIT REPORT:', JSON.stringify(report, null, 2));
+  clearAllTicketsAndLogs();
   console.log('\n============================================================');
   console.log('ALL SECURITY, AUTHORIZATION & WORKFLOW AUDIT TESTS PASSED CLEANLY');
   console.log('============================================================\n');
