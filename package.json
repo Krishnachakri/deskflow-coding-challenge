@@ -1,0 +1,23 @@
+{
+  "name": "deskflow",
+  "version": "1.0.0",
+  "description": "DeskFlow - Incident Management Service Desk",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node test_deskflow.js && node qa_attack_test.js"
+  },
+  "keywords": [
+    "deskflow",
+    "itsm",
+    "incident-management",
+    "service-desk",
+    "sla"
+  ],
+  "author": "DeskFlow Core Team",
+  "license": "ISC",
+  "dependencies": {
+    "better-sqlite3": "^11.8.1",
+    "express": "^4.21.2"
+  }
+}

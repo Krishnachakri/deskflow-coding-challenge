@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DeskFlow - Incident Management Service Desk</title>
+  <link rel="stylesheet" href="style.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+
+  <!-- DeskFlow Corporate Header -->
+  <header>
+    <div class="brand-header">
+      <div class="brand-logo">
+        <h1>DeskFlow</h1>
+      </div>
+      <span class="brand-subtitle">Incident Management Service Desk</span>
+    </div>
+
+    <div class="header-controls">
+      <!-- Subordinate Demo Time Simulator Bar -->
+      <div class="demo-time-box">
+        <span>⏱️ Demo Time:</span>
+        <span id="simTimeDisplay" class="time-val">--:--</span>
+        <button class="btn-demo-action" onclick="fastForwardTime(1)">+1h</button>
+        <button class="btn-demo-action" onclick="fastForwardTime(4)">+4h</button>
+        <button class="btn-demo-action" onclick="fastForwardTime(16)">+2d</button>
+        <button class="btn-demo-action" onclick="resetTime()" style="background:#fee2e2; color:#dc2626;">Reset</button>
+      </div>
+
+      <!-- Demo Auth Role Switcher -->
+      <div class="role-box">
+        <label for="userRoleSelect">View as:</label>
+        <select id="userRoleSelect" onchange="onRoleChange()">
+          <option value="cust-1">Carol Customer (Customer)</option>
+          <option value="agent-1">Alice Agent (Agent)</option>
+          <option value="agent-2">Dave Agent (Agent)</option>
+          <option value="mgr-1" selected>Bob Manager (Manager)</option>
+        </select>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Navigation Tabs -->
+  <nav class="nav-tabs">
+    <button id="tabDashboard" class="tab-btn active" onclick="switchNavTab('dashboard')">Dashboard</button>
+    <button id="tabCreate" class="tab-btn" onclick="switchNavTab('create')">Create Incident</button>
+    <button id="tabQueue" class="tab-btn" onclick="switchNavTab('queue')">Incidents Queue</button>
+    <button id="tabRules" class="tab-btn" onclick="switchNavTab('rules')">Routing Rules</button>
+  </nav>
+
+  <!-- Manager Macro Dashboard Metrics Panel -->
+  <section id="managerDashboardSection" class="metrics-grid">
+    <div class="card-metric">
+      <h3>Open Incidents</h3>
+      <div id="metricTotalOpen" class="val">0</div>
+    </div>
+    <div class="card-metric card-atrisk">
+      <h3>At Risk (< 60m SLA)</h3>
+      <div id="metricAtRisk" class="val">0</div>
+    </div>
+    <div class="card-metric card-overdue">
+      <h3>Overdue Incidents</h3>
+      <div id="metricOverdue" class="val">0</div>
+    </div>
+    <div class="card-metric card-escalated">
+      <h3>Auto-Escalated</h3>
+      <div id="metricEscalated" class="val">0</div>
+    </div>
+  </section>
+
+  <!-- Create Incident Form Section -->
+  <section id="createTicketSection" class="panel hidden">
+    <div class="panel-header">
+      <h2 class="panel-title">Raise New Incident Ticket</h2>
+    </div>
+
+    <form id="createTicketForm" onsubmit="handleCreateTicket(event)">
+      <div class="form-grid">
+        <div class="field-group" style="grid-column: span 2;">
+          <label>Subject / Incident Title</label>
+          <input type="text" id="ticketTitle" required placeholder="Describe the incident concisely">
+        </div>
+        <div class="field-group">
+          <label>Category</label>
+          <select id="ticketCategory" required>
+            <option value="HARDWARE">Hardware</option>
+            <option value="SOFTWARE" selected>Software</option>
+            <option value="BILLING">Billing</option>
+            <option value="OTHER">Other</option>
+          </select>
+        </div>
+        <div class="field-group">
+          <label>Priority Target</label>
+          <select id="ticketPriority" required>
+            <option value="P1">P1 - Critical</option>
+            <option value="P2" selected>P2 - High</option>
+            <option value="P3">P3 - Medium</option>
+            <option value="P4">P4 - Low</option>
+          </select>
+        </div>
+      </div>
+      <div class="field-group" style="margin-bottom:20px;">
+        <label>Detailed Description & Symptoms</label>
+        <textarea id="ticketDescription" rows="4" placeholder="Provide background steps, error messages, or workstation details..."></textarea>
+      </div>
+
+      <button type="submit" class="btn-primary">Submit Incident (Triggers Auto-Assignment & SLA Clock)</button>
+    </form>
+  </section>
+
+  <!-- Incidents Queue Table Section -->
+  <section id="ticketQueueSection" class="panel">
+    <div class="panel-header">
+      <h2 id="queuePanelTitle" class="panel-title">Incidents Queue</h2>
+      <div class="header-controls">
+        <label style="font-size:0.82rem; color:var(--text-muted);">Filter:</label>
+        <select id="ticketFilterSelect" onchange="loadTickets()" style="background:#fff; border:1px solid var(--border-focus); padding:5px 10px; border-radius:6px; font-size:0.85rem;">
+          <option value="ALL">All Incidents</option>
+          <option value="OPEN">Open Only</option>
+          <option value="AT_RISK">At Risk Only</option>
+          <option value="OVERDUE">Overdue Only</option>
+        </select>
+      </div>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Incident #</th>
+          <th>Title</th>
+          <th>Category</th>
+          <th>Priority</th>
+          <th>Status</th>
+          <th>Assignee</th>
+          <th>Response SLA Clock</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="ticketsTableBody">
+        <!-- Rendered dynamically -->
+      </tbody>
+    </table>
+  </section>
+
+  <!-- Routing Rules Admin Panel (Manager Role) -->
+  <section id="rulesSection" class="panel hidden">
+    <div class="panel-header">
+      <h2 class="panel-title">⚙️ Incident Auto-Assignment Routing Rules (No-Code Admin)</h2>
+    </div>
+
+    <!-- Add Rule Form -->
+    <form id="addRuleForm" onsubmit="handleAddRule(event)" style="margin-bottom:20px; background:#f8fafc; padding:16px; border-radius:8px; border:1px solid var(--border-subtle);">
+      <h4 style="margin-bottom:12px; font-size:0.85rem; color:var(--deskflow-blue);">Add Routing Rule</h4>
+      <div class="form-grid">
+        <div class="field-group">
+          <label>Category Criteria</label>
+          <select id="ruleCategory">
+            <option value="ALL">ANY Category (*)</option>
+            <option value="HARDWARE">Hardware</option>
+            <option value="SOFTWARE">Software</option>
+            <option value="BILLING">Billing</option>
+            <option value="OTHER">Other</option>
+          </select>
+        </div>
+        <div class="field-group">
+          <label>Priority Criteria</label>
+          <select id="rulePriority">
+            <option value="ALL">ANY Priority (*)</option>
+            <option value="P1">P1 - Critical</option>
+            <option value="P2">P2 - High</option>
+            <option value="P3">P3 - Medium</option>
+            <option value="P4">P4 - Low</option>
+          </select>
+        </div>
+        <div class="field-group">
+          <label>Assign to Agent</label>
+          <select id="ruleTargetAgent">
+            <option value="agent-1">Alice Agent</option>
+            <option value="agent-2">Dave Agent</option>
+          </select>
+        </div>
+        <div class="field-group" style="justify-content:flex-end;">
+          <button type="submit" class="btn-primary" style="padding:8px 16px;">Save Rule</button>
+        </div>
+      </div>
+    </form>
+
+    <!-- Rules Table -->
+    <table>
+      <thead>
+        <tr>
+          <th>Order</th>
+          <th>Category Criteria</th>
+          <th>Priority Criteria</th>
+          <th>Target Agent</th>
+          <th>Status</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody id="rulesTableBody">
+        <!-- Rendered dynamically -->
+      </tbody>
+    </table>
+  </section>
+
+  <!-- IMS Operational Workspace Modal -->
+  <div id="ticketModal" class="modal-overlay hidden">
+    <div class="modal-workspace">
+      <div class="workspace-header">
+        <div>
+          <span class="badge badge-inc">INCIDENT</span>
+          <strong id="modalTicketId" style="font-size:1.1rem; color:var(--deskflow-blue); margin-left:8px;">INC0000001</strong>
+          <span id="modalTicketTitle" style="font-size:1rem; font-weight:600; margin-left:8px; color:var(--text-main);">Incident Title</span>
+        </div>
+        <button onclick="closeModal()" style="background:none; border:none; color:var(--text-muted); font-size:1.4rem; cursor:pointer;">✕</button>
+      </div>
+
+      <div class="workspace-body">
+        <!-- Main Left Workspace -->
+        <div class="workspace-left">
+          <!-- Description -->
+          <div class="context-box" style="background:#fff;">
+            <h4>INCIDENT DESCRIPTION</h4>
+            <p id="modalDescription" style="font-size:0.9rem; color:var(--text-main);">Incident description text...</p>
+          </div>
+
+          <!-- Internal Work Notes (Hidden from Customer role) -->
+          <div id="workNotesContainer" class="context-box" style="background:#fffbeb; border-color:#fde68a;">
+            <h4 style="color:#b45309;">🔒 INTERNAL WORK NOTES (Agent & Manager Only)</h4>
+            <div id="workNotesList"></div>
+            <div style="margin-top:12px; display:flex; gap:8px;">
+              <input type="text" id="newWorkNoteInput" placeholder="Add internal investigation/troubleshooting note..." style="flex:1;">
+              <button onclick="submitWorkNote()" class="btn-primary" style="background:#d97706; padding:6px 12px;">Add Note</button>
+            </div>
+          </div>
+
+          <!-- Activity Audit Timeline -->
+          <div class="context-box" style="background:#fff;">
+            <h4>ACTIVITY AUDIT TIMELINE</h4>
+            <div id="activityTimelineList"></div>
+          </div>
+        </div>
+
+        <!-- Right Panel Actions & SLA -->
+        <div class="workspace-right">
+          <div class="context-box" style="background:#fff;">
+            <h4>INCIDENT SUMMARY</h4>
+            <p style="font-size:0.85rem; margin-bottom:6px;"><strong>Status:</strong> <span id="modalStatusBadge" class="badge badge-state">In Progress</span></p>
+            <p style="font-size:0.85rem; margin-bottom:6px;"><strong>Category / Priority:</strong> <span id="modalCategoryPriority">SOFTWARE / P2</span></p>
+            <p style="font-size:0.85rem; margin-bottom:6px;"><strong>SLA Status:</strong> <span id="modalSlaBadge"></span></p>
+            <p style="font-size:0.85rem; margin-bottom:6px;"><strong>Response SLA (4h):</strong> <span id="modalResponseClock"></span></p>
+            <p style="font-size:0.85rem; margin-bottom:12px;"><strong>Assignee:</strong> <span id="modalAssigneeName">Alice Agent</span></p>
+
+            <!-- Manager Reassignment Selector -->
+            <div id="managerReassignBox" class="hidden" style="margin-bottom:16px;">
+              <label style="font-size:0.8rem; font-weight:600; color:var(--text-muted);">Reassign Agent:</label>
+              <select id="modalReassignSelect" onchange="submitReassign(this.value)" style="width:100%; margin-top:4px;">
+                <option value="agent-1">Alice Agent</option>
+                <option value="agent-2">Dave Agent</option>
+              </select>
+            </div>
+
+            <!-- Action Buttons -->
+            <div id="modalActionButtons" style="display:flex; flex-direction:column; gap:8px;">
+              <!-- Populated dynamically based on role & state -->
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
