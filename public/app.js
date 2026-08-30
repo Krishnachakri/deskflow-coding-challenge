@@ -163,6 +163,7 @@ function updateUserProfileDisplay() {
 
 // Sidebar Navigation Handler
 function navigateSidebar(tabName, filterVal) {
+  closeModal();
   document.querySelectorAll('.sidebar-btn').forEach(btn => btn.classList.remove('active'));
 
   const isCustomer = currentUser.role === 'CUSTOMER';
@@ -208,6 +209,7 @@ function filterQueueByMetric(filterType) {
 
 // Global Data Refresh
 async function refreshAll() {
+  await loadHolidays();
   await updateSimTime();
   if (currentUser && currentUser.role !== 'CUSTOMER') {
     await loadMetrics();
@@ -291,28 +293,192 @@ async function handleSaveSlaConfig(event) {
   await refreshAll();
 }
 
-// Continuous Live Response SLA Clock (Updates Live without Seconds)
-function formatSlaNoSeconds(remainingMins) {
-  if (isNaN(remainingMins) || remainingMins <= 0) return 'Breached';
-  const totalMins = Math.floor(remainingMins);
+let activeHolidaysCache = [];
+let modalSlaTimer = null;
+
+async function loadHolidays() {
+  try {
+    const res = await fetch('/api/holidays');
+    if (res.ok) {
+      activeHolidaysCache = await res.json();
+    }
+  } catch (e) {}
+}
+
+function isCurrentBrowserWorkingTime() {
+  const now = new Date();
+  const day = now.getDay();
+  if (day === 0 || day === 6) return false; // Weekend (Sat/Sun)
+
+  const hours = now.getHours();
+  if (hours < 9 || hours >= 17) return false; // Off business hours (09:00-17:00)
+
+  const dateStr = now.toISOString().split('T')[0];
+  if (activeHolidaysCache.some(h => h.holiday_date === dateStr && (h.is_active === 1 || h.is_active === true))) {
+    return false; // Active company holiday
+  }
+
+  return true;
+}
+
+// Minute-Only SLA Display Formatting (No Seconds Displayed)
+function formatSlaMinutes(mins) {
+  if (mins === null || mins === undefined || isNaN(mins)) return '--';
+
+  if (mins <= 0) {
+    const overdueMins = Math.abs(Math.floor(mins));
+    return overdueMins === 0 ? 'Overdue' : `Overdue · ${overdueMins}m`;
+  }
+
+  const totalMins = Math.floor(mins);
   const hours = Math.floor(totalMins / 60);
-  const mins = totalMins % 60;
-  return hours > 0 ? `${hours}h ${mins}m remaining` : `${mins}m remaining`;
+  const remainingMins = totalMins % 60;
+
+  if (hours >= 8) {
+    const days = Math.floor(hours / 8);
+    const remHours = hours % 8;
+    return remHours > 0 ? `${days}d ${remHours}h` : `${days}d ${remainingMins > 0 ? remainingMins + 'm' : ''}`.trim();
+  }
+
+  if (hours > 0) {
+    return `${hours}h ${remainingMins < 10 ? '0' : ''}${remainingMins}m`;
+  }
+
+  return `${remainingMins}m`;
 }
 
 function startContinuousSlaClock() {
   if (liveSlaTimer) clearInterval(liveSlaTimer);
   liveSlaTimer = setInterval(() => {
-    updateVisibleSlaClocks();
+    tickTableSlaClocks();
   }, 1000);
 }
 
-function updateVisibleSlaClocks() {
+function tickTableSlaClocks() {
+  const isWorking = isCurrentBrowserWorkingTime();
   document.querySelectorAll('.live-sla-clock').forEach(el => {
-    const remainingMins = parseFloat(el.getAttribute('data-mins-remaining'));
-    if (isNaN(remainingMins) || remainingMins <= 0) return;
-    el.innerText = `⏱️ ${formatSlaNoSeconds(remainingMins)}`;
+    let mins = parseFloat(el.getAttribute('data-mins-remaining'));
+    if (isNaN(mins)) return;
+
+    const isResponded = el.getAttribute('data-responded') === 'true';
+    if (!isResponded && isWorking) {
+      mins -= (1 / 60);
+      el.setAttribute('data-mins-remaining', mins.toString());
+    }
+
+    const text = formatSlaMinutes(mins);
+    const expected = (mins <= 60 && mins > 0) ? `⚠ At Risk · ${text}` : (mins <= 0 ? `🚨 ${text}` : `⏱️ ${text}`);
+    if (el.innerText !== expected) {
+      el.innerText = expected;
+    }
   });
+}
+
+function updateVisibleSlaClocks() {
+  tickTableSlaClocks();
+}
+
+function renderModalSlaGraphics(ticket) {
+  if (modalSlaTimer) {
+    clearInterval(modalSlaTimer);
+    modalSlaTimer = null;
+  }
+
+  let responseMins = ticket.response_mins_remaining;
+  let resolutionMins = ticket.resolution_mins_remaining;
+  const isResponded = !!ticket.responded_at;
+  const isResolved = !!ticket.resolved_at || !!ticket.closed_at;
+
+  function updateModalUI() {
+    // 1. Response SLA Clock & Progress Bar
+    const respLabelEl = document.getElementById('responseSlaLabel');
+    const respBarEl = document.getElementById('responseSlaBar');
+    const clockSpan = document.getElementById('modalResponseClock');
+
+    if (respLabelEl && respBarEl) {
+      if (isResponded) {
+        respLabelEl.innerHTML = `<span style="color:var(--status-normal);">✓ Responded</span>`;
+        respBarEl.style.width = '100%';
+        respBarEl.style.background = 'var(--status-normal)';
+        if (clockSpan) clockSpan.innerHTML = '✓ Responded';
+      } else if (responseMins !== null) {
+        const text = formatSlaMinutes(responseMins);
+        let barColor = 'var(--brand-green)';
+        let statusHtml = `${text} remaining`;
+
+        if (responseMins <= 0) {
+          barColor = 'var(--status-overdue)';
+          statusHtml = `<span style="color:var(--status-overdue);">🚨 ${text}</span>`;
+        } else if (responseMins <= 60) {
+          barColor = 'var(--status-atrisk)';
+          statusHtml = `<span style="color:var(--status-atrisk);">⚠ At Risk · ${text} remaining</span>`;
+        }
+
+        respLabelEl.innerHTML = statusHtml;
+        if (clockSpan) clockSpan.innerHTML = statusHtml;
+
+        const elapsedMins = 240 - Math.max(0, responseMins);
+        const percent = Math.min(100, Math.max(0, Math.round((elapsedMins / 240) * 100)));
+        respBarEl.style.width = `${responseMins <= 0 ? 100 : percent}%`;
+        respBarEl.style.background = barColor;
+        respBarEl.setAttribute('aria-valuenow', percent);
+      } else {
+        respLabelEl.innerText = '--';
+        respBarEl.style.width = '0%';
+        if (clockSpan) clockSpan.innerText = '--';
+      }
+    }
+
+    // 2. Resolution SLA Clock & Progress Bar
+    const resLabelEl = document.getElementById('resolutionSlaLabel');
+    const resBarEl = document.getElementById('resolutionSlaBar');
+
+    if (resLabelEl && resBarEl) {
+      if (isResolved) {
+        resLabelEl.innerHTML = `<span style="color:var(--status-normal);">✓ Resolved</span>`;
+        resBarEl.style.width = '100%';
+        resBarEl.style.background = 'var(--status-normal)';
+      } else if (resolutionMins !== null) {
+        const text = formatSlaMinutes(resolutionMins);
+        let barColor = '#2563eb';
+        let statusHtml = `${text} remaining`;
+
+        if (resolutionMins <= 0) {
+          barColor = 'var(--status-overdue)';
+          statusHtml = `<span style="color:var(--status-overdue);">🚨 ${text}</span>`;
+        } else if (resolutionMins <= 60) {
+          barColor = 'var(--status-atrisk)';
+          statusHtml = `<span style="color:var(--status-atrisk);">⚠ At Risk · ${text} remaining</span>`;
+        }
+
+        resLabelEl.innerHTML = statusHtml;
+
+        const elapsedMins = 960 - Math.max(0, resolutionMins);
+        const percent = Math.min(100, Math.max(0, Math.round((elapsedMins / 960) * 100)));
+        resBarEl.style.width = `${resolutionMins <= 0 ? 100 : percent}%`;
+        resBarEl.style.background = barColor;
+        resBarEl.setAttribute('aria-valuenow', percent);
+      } else {
+        resLabelEl.innerText = '--';
+        resBarEl.style.width = '0%';
+      }
+    }
+  }
+
+  updateModalUI();
+
+  modalSlaTimer = setInterval(() => {
+    const isWorking = isCurrentBrowserWorkingTime();
+    if (isWorking) {
+      if (!isResponded && responseMins !== null && responseMins > 0) {
+        responseMins -= (1 / 60);
+      }
+      if (!isResolved && resolutionMins !== null && resolutionMins > 0) {
+        resolutionMins -= (1 / 60);
+      }
+    }
+    updateModalUI();
+  }, 1000);
 }
 
 // Load Manager Dashboard Metrics
@@ -480,12 +646,15 @@ function renderTicketsList(tickets, customTitle) {
     // Response Clock Display
     let clockText = '--';
     if (ticket.responded_at) {
-      clockText = '<span style="color:var(--status-normal); font-weight:600;">✅ Responded</span>';
+      clockText = '<span style="color:var(--status-normal); font-weight:600;">✓ Responded</span>';
     } else if (ticket.response_mins_remaining !== null) {
+      const text = formatSlaMinutes(ticket.response_mins_remaining);
       if (ticket.response_mins_remaining <= 0) {
-        clockText = `<span style="color:var(--status-overdue); font-weight:bold;">Breached (${Math.abs(ticket.response_mins_remaining)}m ago)</span>`;
+        clockText = `<span style="color:var(--status-overdue); font-weight:bold;">🚨 ${text}</span>`;
+      } else if (ticket.response_mins_remaining <= 60) {
+        clockText = `<span class="live-sla-clock" data-mins-remaining="${ticket.response_mins_remaining}" data-responded="${!!ticket.responded_at}" style="color:var(--status-atrisk); font-weight:bold;">⚠ At Risk · ${text}</span>`;
       } else {
-        clockText = `<span class="live-sla-clock" data-mins-remaining="${ticket.response_mins_remaining}">⏱️ ${formatSlaNoSeconds(ticket.response_mins_remaining)}</span>`;
+        clockText = `<span class="live-sla-clock" data-mins-remaining="${ticket.response_mins_remaining}" data-responded="${!!ticket.responded_at}">⏱️ ${text}</span>`;
       }
     }
 
@@ -558,11 +727,8 @@ async function inspectTicket(ticketId) {
   if (ticket.is_escalated) slaBadge += ` <span class="badge badge-escalated">AUTO-ESCALATED</span>`;
   document.getElementById('modalSlaBadge').innerHTML = slaBadge;
 
-  document.getElementById('modalResponseClock').innerHTML = ticket.responded_at
-    ? '✅ Responded'
-    : ticket.response_mins_remaining !== null
-    ? formatSlaNoSeconds(ticket.response_mins_remaining)
-    : '--';
+  // Render Graphical SLA Timeline & Live Clocks
+  renderModalSlaGraphics(ticket);
 
   // Render Customer Conversation Thread
   const conversationList = document.getElementById('conversationThreadList');
@@ -671,6 +837,10 @@ async function inspectTicket(ticketId) {
 }
 
 function closeModal() {
+  if (modalSlaTimer) {
+    clearInterval(modalSlaTimer);
+    modalSlaTimer = null;
+  }
   document.getElementById('ticketModal').classList.add('hidden');
 }
 

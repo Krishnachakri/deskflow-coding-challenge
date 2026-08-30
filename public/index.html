@@ -555,6 +555,43 @@
               <!-- Populated dynamically based on role & state -->
             </div>
           </div>
+
+          <!-- Graphical SLA Timeline & Visual Progress Bars -->
+          <div class="context-box" style="background:var(--bg-card); margin-top:16px;">
+            <h4 style="margin-bottom:12px;">📊 SLA TIMELINE & PROGRESS</h4>
+            
+            <!-- Response SLA Widget -->
+            <div class="sla-progress-widget" style="margin-bottom:16px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                <span style="font-size:0.82rem; font-weight:700; color:var(--text-main);">Response SLA (4h Target)</span>
+                <span id="responseSlaLabel" style="font-size:0.82rem; font-weight:700;">--</span>
+              </div>
+              <div class="sla-progress-track" style="height:10px; background:var(--sidebar-badge-bg); border-radius:6px; overflow:hidden; position:relative; margin-bottom:6px;">
+                <div id="responseSlaBar" class="sla-progress-fill" style="height:100%; width:0%; background:var(--brand-green); transition:width 0.3s ease;" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" aria-label="Response SLA Progress"></div>
+              </div>
+              <div style="display:flex; justify-content:space-between; font-size:0.7rem; color:var(--text-muted);">
+                <span>● Created</span>
+                <span style="color:var(--status-atrisk);">▲ At Risk (60m)</span>
+                <span>● Breach (4h)</span>
+              </div>
+            </div>
+
+            <!-- Resolution SLA Widget -->
+            <div class="sla-progress-widget">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                <span style="font-size:0.82rem; font-weight:700; color:var(--text-main);">Resolution SLA (2d Target)</span>
+                <span id="resolutionSlaLabel" style="font-size:0.82rem; font-weight:700;">--</span>
+              </div>
+              <div class="sla-progress-track" style="height:10px; background:var(--sidebar-badge-bg); border-radius:6px; overflow:hidden; position:relative; margin-bottom:6px;">
+                <div id="resolutionSlaBar" class="sla-progress-fill" style="height:100%; width:0%; background:#2563eb; transition:width 0.3s ease;" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" aria-label="Resolution SLA Progress"></div>
+              </div>
+              <div style="display:flex; justify-content:space-between; font-size:0.7rem; color:var(--text-muted);">
+                <span>● Created</span>
+                <span style="color:var(--status-atrisk);">▲ At Risk (60m)</span>
+                <span>● Breach (2d)</span>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
