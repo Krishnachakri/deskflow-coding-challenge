@@ -5,6 +5,8 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
+    "seed": "node seedDemoData.js",
+    "clear-tickets": "node clearTickets.js",
     "test": "node test_deskflow.js && node qa_attack_test.js && node security_and_gap_test.js"
   },
   "keywords": [
