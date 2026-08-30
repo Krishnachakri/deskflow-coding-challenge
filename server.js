@@ -272,7 +272,7 @@ app.get('/api/tickets', (req, res) => {
       db.prepare(`
         INSERT INTO activity_logs (id, ticket_id, actor_id, activity_type, content, created_at)
         VALUES (?, ?, ?, 'SLA_ESCALATION', ?, ?)
-      `).run(`act-esc-${Date.now()}`, ticket.id, 'mgr-1', 'Ticket automatically escalated due to At Risk SLA threshold', simulatedTime);
+      `).run(`act-esc-${Date.now()}-${Math.floor(Math.random()*10000)}`, ticket.id, 'mgr-1', 'Ticket automatically escalated due to At Risk SLA threshold', simulatedTime);
 
       // Dispatch idempotent notification
       if (ticket.agent_id) {
@@ -408,14 +408,14 @@ app.post('/api/tickets', (req, res) => {
   db.prepare(`
     INSERT INTO conversation_entries (id, ticket_id, actor_id, entry_type, content, created_at)
     VALUES (?, ?, ?, 'CUSTOMER_MESSAGE', ?, ?)
-  `).run(`conv-${Date.now()}`, ticketId, customerId, description || title, createdDate.toISOString());
+  `).run(`conv-${Date.now()}-${Math.floor(Math.random()*10000)}`, ticketId, customerId, description || title, createdDate.toISOString());
 
   // Log creation activity
   db.prepare(`
     INSERT INTO activity_logs (id, ticket_id, actor_id, activity_type, content, created_at)
     VALUES (?, ?, ?, 'CREATED', ?, ?)
   `).run(
-    `act-${Date.now()}`, ticketId, customerId,
+    `act-${Date.now()}-${Math.floor(Math.random()*10000)}`, ticketId, customerId,
     `Incident ${ticketId} created and auto-assigned to ${assignedAgentId || 'Unassigned'}`,
     createdDate.toISOString()
   );
@@ -464,13 +464,13 @@ app.post('/api/tickets/:id/request-info', (req, res) => {
   db.prepare(`
     INSERT INTO conversation_entries (id, ticket_id, actor_id, entry_type, content, created_at)
     VALUES (?, ?, ?, 'AGENT_REQUEST', ?, ?)
-  `).run(`conv-${Date.now()}`, ticket.id, authUser.id, requestText.trim(), simulatedTime);
+  `).run(`conv-${Date.now()}-${Math.floor(Math.random()*10000)}`, ticket.id, authUser.id, requestText.trim(), simulatedTime);
 
   // Log Activity
   db.prepare(`
     INSERT INTO activity_logs (id, ticket_id, actor_id, activity_type, content, created_at)
     VALUES (?, ?, ?, 'INFO_REQUESTED', ?, ?)
-  `).run(`act-${Date.now()}`, ticket.id, authUser.id, `Agent requested information: "${requestText.substring(0, 50)}..."`, simulatedTime);
+  `).run(`act-${Date.now()}-${Math.floor(Math.random()*10000)}`, ticket.id, authUser.id, `Agent requested information: "${requestText.substring(0, 50)}..."`, simulatedTime);
 
   // Dispatch Notification to Customer
   sendNotification(ticket.id, 'INFO_REQUESTED', ticket.customer_id, `Information requested for incident ${ticket.id}: ${requestText.substring(0, 60)}...`, simulatedTime);
@@ -501,7 +501,7 @@ app.post('/api/tickets/:id/customer-reply', (req, res) => {
   db.prepare(`
     INSERT INTO conversation_entries (id, ticket_id, actor_id, entry_type, content, created_at)
     VALUES (?, ?, ?, 'CUSTOMER_REPLY', ?, ?)
-  `).run(`conv-${Date.now()}`, ticket.id, userId, replyText.trim(), simulatedTime);
+  `).run(`conv-${Date.now()}-${Math.floor(Math.random()*10000)}`, ticket.id, userId, replyText.trim(), simulatedTime);
 
   // Automatically transition PENDING_CUSTOMER -> IN_PROGRESS and clear pending prompt
   db.prepare("UPDATE tickets SET state = 'IN_PROGRESS', info_requested = NULL WHERE id = ?").run(ticket.id);
@@ -510,7 +510,7 @@ app.post('/api/tickets/:id/customer-reply', (req, res) => {
   db.prepare(`
     INSERT INTO activity_logs (id, ticket_id, actor_id, activity_type, content, created_at)
     VALUES (?, ?, ?, 'CUSTOMER_REPLIED', ?, ?)
-  `).run(`act-${Date.now()}`, ticket.id, userId, `Customer provided requested information: "${replyText.substring(0, 50)}..."`, simulatedTime);
+  `).run(`act-${Date.now()}-${Math.floor(Math.random()*10000)}`, ticket.id, userId, `Customer provided requested information: "${replyText.substring(0, 50)}..."`, simulatedTime);
 
   // Dispatch Notification to Agent
   if (ticket.agent_id) {
@@ -548,7 +548,7 @@ app.post('/api/tickets/:id/request-approval', (req, res) => {
   db.prepare(`
     INSERT INTO activity_logs (id, ticket_id, actor_id, activity_type, content, created_at)
     VALUES (?, ?, ?, 'APPROVAL_REQUESTED', ?, ?)
-  `).run(`act-app-${Date.now()}`, ticket.id, authUser.id, `Requested Manager Approval: "${reason.trim()}"`, nowStr);
+  `).run(`act-app-${Date.now()}-${Math.floor(Math.random()*10000)}`, ticket.id, authUser.id, `Requested Manager Approval: "${reason.trim()}"`, nowStr);
 
   sendNotification(ticket.id, 'APPROVAL_REQUESTED', 'mgr-1', `Agent ${authUser.name} requested Manager Approval for Incident ${ticket.id}`, nowStr);
 
@@ -582,7 +582,7 @@ app.post('/api/tickets/:id/decide-approval', (req, res) => {
   db.prepare(`
     INSERT INTO activity_logs (id, ticket_id, actor_id, activity_type, content, created_at)
     VALUES (?, ?, ?, 'APPROVAL_DECISION', ?, ?)
-  `).run(`act-dec-${Date.now()}`, ticket.id, authUser.id, `Manager ${authUser.name} ${actionText}${detailText}`, nowStr);
+  `).run(`act-dec-${Date.now()}-${Math.floor(Math.random()*10000)}`, ticket.id, authUser.id, `Manager ${authUser.name} ${actionText}${detailText}`, nowStr);
 
   if (ticket.agent_id) {
     sendNotification(ticket.id, `APPROVAL_${decision}`, ticket.agent_id, `Manager ${authUser.name} ${decision} approval request for Incident ${ticket.id}`, nowStr);
@@ -651,7 +651,7 @@ app.patch('/api/tickets/:id/state', (req, res) => {
     INSERT INTO activity_logs (id, ticket_id, actor_id, activity_type, content, created_at)
     VALUES (?, ?, ?, 'STATE_CHANGE', ?, ?)
   `).run(
-    `act-${Date.now()}`, ticket.id, actorId,
+    `act-${Date.now()}-${Math.floor(Math.random()*10000)}`, ticket.id, actorId,
     `Status changed to ${state}. ${resolutionNotes ? 'Resolution Notes: ' + resolutionNotes : (comment ? 'Comment: ' + comment : '')}`,
     simulatedTime
   );
@@ -685,12 +685,12 @@ app.post('/api/tickets/:id/work-notes', (req, res) => {
   db.prepare(`
     INSERT INTO work_notes (id, ticket_id, actor_id, note, created_at)
     VALUES (?, ?, ?, ?, ?)
-  `).run(noteId, req.params.id, actorId, note, simulatedTime);
+  `).run(`note-${Date.now()}-${Math.floor(Math.random()*10000)}`, req.params.id, actorId, note, simulatedTime);
 
   db.prepare(`
     INSERT INTO activity_logs (id, ticket_id, actor_id, activity_type, content, created_at)
     VALUES (?, ?, ?, 'WORK_NOTE', ?, ?)
-  `).run(`act-${Date.now()}`, req.params.id, actorId, `Added internal work note: "${note.substring(0, 40)}..."`, simulatedTime);
+  `).run(`act-${Date.now()}-${Math.floor(Math.random()*10000)}`, req.params.id, actorId, `Added internal work note: "${note.substring(0, 40)}..."`, simulatedTime);
 
   res.status(201).json({ message: 'Work note recorded.' });
 });
@@ -713,7 +713,7 @@ app.patch('/api/tickets/:id/reassign', (req, res) => {
   db.prepare(`
     INSERT INTO activity_logs (id, ticket_id, actor_id, activity_type, content, created_at)
     VALUES (?, ?, ?, 'REASSIGNED', ?, ?)
-  `).run(`act-${Date.now()}`, ticket.id, authUser.id, `Ticket reassigned from ${prevAgentId} to ${agentId}`, simulatedTime);
+  `).run(`act-${Date.now()}-${Math.floor(Math.random()*10000)}`, ticket.id, authUser.id, `Ticket reassigned from ${prevAgentId} to ${agentId}`, simulatedTime);
 
   sendNotification(ticket.id, 'REASSIGNED', agentId, `Incident ${ticket.id} reassigned to you.`, simulatedTime);
 

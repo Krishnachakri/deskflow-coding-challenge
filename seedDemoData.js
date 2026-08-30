@@ -42,6 +42,15 @@ function seedDemoTickets(force = false) {
     insertRule.run('rule-4', 4, 'ALL', 'P4', 'agent-2', 0);
   }
 
+  // Seed default company business holidays
+  const insertHol = db.prepare('INSERT INTO holidays (id, holiday_date, name, is_active) VALUES (?, ?, ?, 1)');
+  insertHol.run('hol-1', '2026-01-01', "New Year's Day");
+  insertHol.run('hol-2', '2026-05-25', 'Memorial Day');
+  insertHol.run('hol-3', '2026-07-04', 'Independence Day');
+  insertHol.run('hol-4', '2026-09-07', 'Labor Day');
+  insertHol.run('hol-5', '2026-11-26', 'Thanksgiving Day');
+  insertHol.run('hol-6', '2026-12-25', 'Christmas Day');
+
   const insertTicket = db.prepare(`
     INSERT INTO tickets (
       id, title, description, service_area, service_type, category, priority, state, customer_id, agent_id, 

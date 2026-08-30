@@ -133,9 +133,12 @@ try { db.exec("ALTER TABLE tickets ADD COLUMN approval_decided_at TEXT"); } catc
 const holidayCheck = db.prepare('SELECT COUNT(*) as count FROM holidays').get();
 if (holidayCheck.count === 0) {
   const insertHol = db.prepare('INSERT OR IGNORE INTO holidays (id, holiday_date, name, is_active) VALUES (?, ?, ?, 1)');
-  insertHol.run('hol-1', '2026-09-07', 'Labor Day');
-  insertHol.run('hol-2', '2026-11-26', 'Thanksgiving Day');
-  insertHol.run('hol-3', '2026-12-25', 'Christmas Day');
+  insertHol.run('hol-1', '2026-01-01', "New Year's Day");
+  insertHol.run('hol-2', '2026-05-25', 'Memorial Day');
+  insertHol.run('hol-3', '2026-07-04', 'Independence Day');
+  insertHol.run('hol-4', '2026-09-07', 'Labor Day');
+  insertHol.run('hol-5', '2026-11-26', 'Thanksgiving Day');
+  insertHol.run('hol-6', '2026-12-25', 'Christmas Day');
 }
 
 module.exports = db;

@@ -607,17 +607,17 @@
           </div>
 
           <!-- Manager Approval Status & Action Banner -->
-          <div id="approvalBannerBox" class="context-box hidden" style="background:rgba(139, 92, 246, 0.08); border:2px solid #8b5cf6; margin-top:16px;">
+          <div id="approvalBannerBox" class="context-box hidden" style="background:#ffffff; border:2px solid #8b5cf6; margin-top:16px; box-shadow:0 4px 12px rgba(139, 92, 246, 0.15);">
             <h4 style="color:#7c3aed; margin-bottom:6px;">🛡️ MANAGER APPROVAL WORKFLOW</h4>
             <p style="font-size:0.85rem; margin-bottom:6px;"><strong>Approval Status:</strong> <span id="modalApprovalStatusBadge" class="badge" style="background:#8b5cf6; color:#fff;">PENDING APPROVAL</span></p>
             <p id="modalApprovalReasonText" style="font-size:0.82rem; color:var(--text-main); margin-bottom:10px; font-weight:600;"></p>
             
             <!-- Decision Controls for Manager -->
             <div id="managerApprovalControls" class="hidden" style="display:flex; flex-direction:column; gap:8px;">
-              <input type="text" id="approvalDecisionNote" placeholder="Optional decision note/reason..." style="font-size:0.82rem; padding:6px; border:1px solid #c4b5fd; border-radius:4px;">
+              <input type="text" id="approvalDecisionNote" placeholder="Optional decision note/reason..." style="font-size:0.82rem; padding:8px; border:1px solid #c4b5fd; border-radius:6px; background:#f8fafc; color:#0f172a;">
               <div style="display:flex; gap:8px;">
-                <button onclick="submitApprovalDecision('APPROVED')" class="btn-primary" style="background:#059669; flex:1; padding:6px 8px;">✅ Approve Request</button>
-                <button onclick="submitApprovalDecision('REJECTED')" class="btn-primary" style="background:#dc2626; flex:1; padding:6px 8px;">❌ Reject Request</button>
+                <button onclick="submitApprovalDecision('APPROVED')" class="btn-primary" style="background:#059669; flex:1; padding:8px; font-weight:600;">✅ Approve Request</button>
+                <button onclick="submitApprovalDecision('REJECTED')" class="btn-primary" style="background:#dc2626; flex:1; padding:8px; font-weight:600;">❌ Reject Request</button>
               </div>
             </div>
           </div>
@@ -628,17 +628,17 @@
 
   <!-- Modal Dialog: Agent Request Manager Approval -->
   <div id="requestApprovalModal" class="modal-overlay hidden">
-    <div class="modal-container" style="max-width:480px;">
-      <div class="modal-header">
-        <h3 style="color:#7c3aed;">🛡️ Request Manager Approval</h3>
-        <button onclick="closeRequestApprovalModal()" class="modal-close-btn">&times;</button>
+    <div class="modal-card-popup" style="max-width:480px; width:90%; background:#ffffff; color:#0f172a; border-radius:16px; box-shadow:0 25px 50px -12px rgba(0, 0, 0, 0.35); border:1px solid #e2e8f0; overflow:hidden;">
+      <div style="padding:18px 24px; background:#f8fafc; border-bottom:1px solid #e2e8f0; display:flex; justify-content:space-between; align-items:center;">
+        <h3 style="color:#7c3aed; margin:0; font-size:1.15rem; font-weight:700;">🛡️ Request Manager Approval</h3>
+        <button onclick="closeRequestApprovalModal()" style="background:transparent; border:none; font-size:1.5rem; cursor:pointer; color:#64748b;">&times;</button>
       </div>
-      <div class="modal-body" style="padding:16px;">
-        <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom:12px;">Specify the reason or authorization request details for Manager review (e.g. cost approval, high-impact changes, or policy exceptions):</p>
-        <textarea id="approvalReasonInput" rows="4" placeholder="Describe why Manager Approval is required for this incident..." style="width:100%; border:1px solid var(--border-focus); padding:8px; border-radius:6px; font-size:0.88rem; margin-bottom:16px;"></textarea>
+      <div class="modal-body" style="padding:20px; background:#ffffff;">
+        <p style="font-size:0.85rem; color:#475569; margin-bottom:12px; line-height:1.4;">Specify the reason or authorization request details for Manager review (e.g. cost approval, high-impact changes, or policy exceptions):</p>
+        <textarea id="approvalReasonInput" rows="4" placeholder="Describe why Manager Approval is required for this incident..." style="width:100%; border:1px solid #cbd5e1; background:#f8fafc; color:#0f172a; padding:10px; border-radius:8px; font-size:0.88rem; margin-bottom:16px; resize:vertical; outline:none;"></textarea>
         <div style="display:flex; justify-content:flex-end; gap:8px;">
-          <button onclick="closeRequestApprovalModal()" class="btn-demo-action">Cancel</button>
-          <button onclick="submitRequestApproval()" class="btn-primary" style="background:#7c3aed;">Submit for Manager Approval</button>
+          <button onclick="closeRequestApprovalModal()" class="btn-demo-action" style="padding:8px 16px;">Cancel</button>
+          <button onclick="submitRequestApproval()" class="btn-primary" style="background:#7c3aed; padding:8px 16px; font-weight:600;">Submit for Manager Approval</button>
         </div>
       </div>
     </div>
