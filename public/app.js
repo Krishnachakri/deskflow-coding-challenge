@@ -140,7 +140,7 @@ async function initApp() {
   await updateSimTime();
   startContinuousSlaClock();
 
-  if (currentUser.role === 'CUSTOMER') {
+  if (currentUser.role === 'CUSTOMER' || currentUser.role === 'AGENT') {
     navigateSidebar('queue', 'ALL');
   } else {
     navigateSidebar('dashboard');
@@ -177,15 +177,34 @@ function navigateSidebar(tabName, filterVal) {
   document.getElementById('slaConfigSection').classList.toggle('hidden', tabName !== 'sLaconfig' || !isManager);
 
   // Set active button
-  if (tabName === 'dashboard') document.getElementById('sbDashboard').classList.add('active');
+  if (tabName === 'dashboard') {
+    const sbDash = document.getElementById('sbDashboard');
+    if (sbDash && !isCustomer) sbDash.classList.add('active');
+  }
   if (tabName === 'create') document.getElementById('sbCreate').classList.add('active');
   if (tabName === 'rules') document.getElementById('sbRules').classList.add('active');
   if (tabName === 'sLaconfig') document.getElementById('sbSlaConfig').classList.add('active');
 
-  if (tabName === 'queue') {
+  if (tabName === 'queue' || tabName === 'dashboard') {
     const filterSelect = document.getElementById('ticketFilterSelect');
     if (filterVal) {
       filterSelect.value = filterVal;
+    }
+    const btnIdMap = {
+      'ALL': 'sbIncAll',
+      'NEW': 'sbIncNew',
+      'IN_PROGRESS': 'sbIncInProgress',
+      'PENDING_CUSTOMER': 'sbIncPending',
+      'RESOLVED': 'sbIncResolved',
+      'CLOSED': 'sbIncClosed',
+      'AT_RISK': 'sbIncAtRisk',
+      'OVERDUE': 'sbIncOverdue',
+      'ESCALATED': 'sbIncEscalated'
+    };
+    const activeBtnId = btnIdMap[filterSelect.value];
+    if (activeBtnId && tabName === 'queue') {
+      const btn = document.getElementById(activeBtnId);
+      if (btn) btn.classList.add('active');
     }
     loadTickets();
   }

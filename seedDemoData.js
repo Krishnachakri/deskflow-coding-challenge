@@ -1,7 +1,12 @@
 const db = require('./db');
 const { addBusinessMinutes } = require('./slaEngine');
 
-function seedDemoTickets() {
+function seedDemoTickets(force = false) {
+  const ticketCount = db.prepare('SELECT COUNT(*) as c FROM tickets').get().c;
+  if (!force && ticketCount > 0) {
+    return; // Preserve existing user tickets in database
+  }
+
   const now = new Date();
   
   // Clean existing tables in correct order for foreign key constraints and isolated test state
@@ -127,7 +132,7 @@ function seedDemoTickets() {
 }
 
 if (require.main === module) {
-  seedDemoTickets();
+  seedDemoTickets(true);
 }
 
 module.exports = seedDemoTickets;

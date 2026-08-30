@@ -711,7 +711,10 @@ app.get('/api/dashboard-metrics', (req, res) => {
   });
 });
 
+const seedDemoTickets = require('./seedDemoData');
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
+  seedDemoTickets(false);
   console.log(`DeskFlow Server running on http://localhost:${PORT}`);
 });
