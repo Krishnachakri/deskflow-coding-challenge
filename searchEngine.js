@@ -35,11 +35,11 @@ function searchIncidents(query, role, userId, categoryFilter, priorityFilter, st
   if (query) {
     const term = `%${query.trim()}%`;
     if (role === 'CUSTOMER') {
-      sql += ` AND (t.id LIKE ? OR t.title LIKE ? OR t.description LIKE ? OR t.category LIKE ? OR act.content LIKE ?)`;
-      params.push(term, term, term, term, term);
+      sql += ` AND (t.id LIKE ? OR t.title LIKE ? OR t.description LIKE ? OR t.service_area LIKE ? OR t.service_type LIKE ? OR t.category LIKE ? OR act.content LIKE ?)`;
+      params.push(term, term, term, term, term, term, term);
     } else {
-      sql += ` AND (t.id LIKE ? OR t.title LIKE ? OR t.description LIKE ? OR t.category LIKE ? OR c.name LIKE ? OR a.name LIKE ? OR act.content LIKE ? OR wn.note LIKE ?)`;
-      params.push(term, term, term, term, term, term, term, term);
+      sql += ` AND (t.id LIKE ? OR t.title LIKE ? OR t.description LIKE ? OR t.service_area LIKE ? OR t.service_type LIKE ? OR t.category LIKE ? OR c.name LIKE ? OR a.name LIKE ? OR act.content LIKE ? OR wn.note LIKE ?)`;
+      params.push(term, term, term, term, term, term, term, term, term, term);
     }
   }
 

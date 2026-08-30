@@ -38,7 +38,9 @@ db.exec(`
     id TEXT PRIMARY KEY,
     title TEXT NOT NULL,
     description TEXT NOT NULL,
-    category TEXT NOT NULL CHECK(category IN ('HARDWARE', 'SOFTWARE', 'BILLING', 'OTHER')),
+    service_area TEXT NOT NULL DEFAULT 'Software Services',
+    service_type TEXT NOT NULL DEFAULT 'Application Failure',
+    category TEXT DEFAULT 'SOFTWARE',
     priority TEXT NOT NULL CHECK(priority IN ('P1', 'P2', 'P3', 'P4')),
     state TEXT NOT NULL CHECK(state IN ('NEW', 'IN_PROGRESS', 'PENDING_CUSTOMER', 'RESOLVED', 'CLOSED')),
     customer_id TEXT NOT NULL,
@@ -115,6 +117,8 @@ db.exec(`
 try { db.exec('ALTER TABLE users ADD COLUMN username TEXT'); } catch (e) {}
 try { db.exec('ALTER TABLE users ADD COLUMN password_hash TEXT'); } catch (e) {}
 try { db.exec('ALTER TABLE tickets ADD COLUMN info_requested TEXT'); } catch (e) {}
+try { db.exec("ALTER TABLE tickets ADD COLUMN service_area TEXT DEFAULT 'Software Services'"); } catch (e) {}
+try { db.exec("ALTER TABLE tickets ADD COLUMN service_type TEXT DEFAULT 'Application Failure'"); } catch (e) {}
 try { db.exec('ALTER TABLE assignment_rules ADD COLUMN use_workload_balance INTEGER NOT NULL DEFAULT 0'); } catch (e) {}
 
 module.exports = db;

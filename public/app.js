@@ -679,11 +679,12 @@ function renderTicketsList(tickets, customTitle) {
 
     const assigneeName = ticket.agent_name || '<em>Unassigned</em>';
     const actions = `<button onclick="inspectTicket('${ticket.id}')" class="btn-demo-action" style="background:var(--deskflow-blue); color:#fff;">Inspect</button>`;
+    const serviceAreaType = `${ticket.service_area || ticket.category || 'Software Services'}<br><span style="font-size:0.75rem; color:var(--text-muted);">${ticket.service_type || 'General Service'}</span>`;
 
     tr.innerHTML = `
       <td><span class="badge badge-inc">${ticket.id}</span></td>
       <td>${ticket.title}</td>
-      <td>${ticket.category}</td>
+      <td>${serviceAreaType}</td>
       <td><strong>${ticket.priority}</strong></td>
       <td><span class="badge badge-state">${getUIStateLabel(ticket.state)}</span></td>
       <td>${assigneeName}</td>
@@ -696,11 +697,31 @@ function renderTicketsList(tickets, customTitle) {
   updateVisibleSlaClocks();
 }
 
+function updateServiceTypes() {
+  const areaSelect = document.getElementById('ticketServiceArea');
+  const typeSelect = document.getElementById('ticketServiceType');
+  if (!areaSelect || !typeSelect) return;
+
+  const area = areaSelect.value;
+  const optionsMap = {
+    'Software Services': ['Application Failure', 'Account Access & Permissions', 'Software License Request', 'Bug & Error Investigation'],
+    'Hardware & Devices': ['Hardware Repair/Replacement', 'Workstation Setup', 'Peripherals & Accessories', 'Mobile Device Provisioning'],
+    'Billing & Subscriptions': ['Invoice & Payment Discrepancy', 'Subscription Upgrade/Downgrade', 'Tax Compliance Report', 'Refund Request'],
+    'Infrastructure & Network': ['System Configuration', 'VPN & Remote Access', 'DNS & Firewall Rules', 'Cloud Server Outage']
+  };
+
+  const types = optionsMap[area] || ['General Inquiry'];
+  typeSelect.innerHTML = types.map(t => `<option value="${t}">${t}</option>`).join('');
+}
+
 // Submit Create Ticket Form
 async function handleCreateTicket(event) {
   event.preventDefault();
   const title = document.getElementById('ticketTitle').value;
-  const category = document.getElementById('ticketCategory').value;
+  const serviceAreaSelect = document.getElementById('ticketServiceArea');
+  const serviceTypeSelect = document.getElementById('ticketServiceType');
+  const serviceArea = serviceAreaSelect ? serviceAreaSelect.value : 'Software Services';
+  const serviceType = serviceTypeSelect ? serviceTypeSelect.value : 'Application Failure';
   const priority = document.getElementById('ticketPriority').value;
   const description = document.getElementById('ticketDescription').value;
 
@@ -710,7 +731,7 @@ async function handleCreateTicket(event) {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${authToken}`
     },
-    body: JSON.stringify({ title, category, priority, description })
+    body: JSON.stringify({ title, serviceArea, serviceType, priority, description })
   });
 
   if (res.ok) {
@@ -735,7 +756,11 @@ async function inspectTicket(ticketId) {
 
   document.getElementById('modalTicketId').innerText = ticket.id;
   document.getElementById('modalTicketTitle').innerText = ticket.title;
-  document.getElementById('modalCategoryPriority').innerText = `${ticket.category} / ${ticket.priority}`;
+  document.getElementById('modalCategoryPriority').innerHTML = `
+    <strong>Service Area:</strong> ${ticket.service_area || ticket.category || 'Software Services'}<br>
+    <strong>Service Type:</strong> ${ticket.service_type || 'General Service'}<br>
+    <strong>Priority Target:</strong> ${ticket.priority}
+  `;
   document.getElementById('modalStatusBadge').innerText = getUIStateLabel(ticket.state);
   document.getElementById('modalAssigneeName').innerText = ticket.agent_name || 'Unassigned';
 

@@ -11,15 +11,13 @@ const app = express();
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Helper to get current simulated time
+// System Time Resolution (Strict Real System Time)
 function getSimulatedTime() {
-  const config = db.prepare('SELECT value FROM system_config WHERE key = ?').get('simulated_time_offset_hours');
-  const offsetHours = config ? parseFloat(config.value) : 0;
   const now = new Date();
   return {
     realTime: now.toISOString(),
-    offsetHours: offsetHours,
-    simulatedTime: new Date(now.getTime() + offsetHours * 60 * 60 * 1000).toISOString()
+    offsetHours: 0,
+    simulatedTime: now.toISOString()
   };
 }
 
@@ -364,11 +362,15 @@ app.get('/api/tickets/:id', (req, res) => {
 
 app.post('/api/tickets', (req, res) => {
   const authUser = getAuthUser(req);
-  const { title, description, category, priority } = req.body;
+  const { title, description, serviceArea, serviceType, category, priority } = req.body;
   const customerId = authUser ? authUser.id : (req.body.customerId || 'cust-1');
 
-  if (!title || !category || !priority) {
-    return res.status(400).json({ error: 'Title, category, and priority are required.' });
+  const finalServiceArea = serviceArea || req.body.service_area || category || 'Software Services';
+  const finalServiceType = serviceType || req.body.service_type || 'Application Failure';
+  const finalCategory = category || (finalServiceArea === 'Hardware & Devices' ? 'HARDWARE' : finalServiceArea === 'Billing & Subscriptions' ? 'BILLING' : 'SOFTWARE');
+
+  if (!title || !priority) {
+    return res.status(400).json({ error: 'Title and priority are required.' });
   }
 
   // Generate persistent sequential INC number
@@ -376,11 +378,10 @@ app.post('/api/tickets', (req, res) => {
   const num = (countRow.count || 0) + 1;
   const ticketId = `INC${String(num).padStart(7, '0')}`;
 
-  const { simulatedTime } = getSimulatedTime();
-  const createdDate = new Date(simulatedTime);
+  const createdDate = new Date();
 
   // Auto-Assignment Engine calculation
-  const assignedAgentId = findTargetAgent(category, priority);
+  const assignedAgentId = findTargetAgent(finalCategory, priority);
 
   // SLA calculation
   const respHoursConfig = db.prepare("SELECT value FROM system_config WHERE key = 'sla_response_hours'").get();
@@ -393,11 +394,11 @@ app.post('/api/tickets', (req, res) => {
 
   db.prepare(`
     INSERT INTO tickets (
-      id, title, description, category, priority, state, customer_id, agent_id, 
+      id, title, description, service_area, service_type, category, priority, state, customer_id, agent_id, 
       created_at, response_due_at, resolution_due_at, is_escalated
-    ) VALUES (?, ?, ?, ?, ?, 'NEW', ?, ?, ?, ?, ?, 0)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, 'NEW', ?, ?, ?, ?, ?, 0)
   `).run(
-    ticketId, title, description || '', category, priority, customerId,
+    ticketId, title, description || '', finalServiceArea, finalServiceType, finalCategory, priority, customerId,
     assignedAgentId, createdDate.toISOString(), responseDue, resolutionDue
   );
 

@@ -213,12 +213,20 @@
               <input type="text" id="ticketTitle" required placeholder="Describe the incident concisely">
             </div>
             <div class="field-group">
-              <label>Category</label>
-              <select id="ticketCategory" required>
-                <option value="HARDWARE">Hardware</option>
-                <option value="SOFTWARE" selected>Software</option>
-                <option value="BILLING">Billing</option>
-                <option value="OTHER">Other</option>
+              <label>Service Area</label>
+              <select id="ticketServiceArea" required onchange="updateServiceTypes()">
+                <option value="Software Services" selected>Software Services</option>
+                <option value="Hardware & Devices">Hardware & Devices</option>
+                <option value="Billing & Subscriptions">Billing & Subscriptions</option>
+                <option value="Infrastructure & Network">Infrastructure & Network</option>
+              </select>
+            </div>
+            <div class="field-group">
+              <label>Service Type</label>
+              <select id="ticketServiceType" required>
+                <option value="Application Failure">Application Failure</option>
+                <option value="Account Access & Permissions">Account Access & Permissions</option>
+                <option value="System Configuration">System Configuration</option>
               </select>
             </div>
             <div class="field-group">
@@ -275,7 +283,7 @@
             <tr>
               <th>Incident #</th>
               <th>Title</th>
-              <th>Category</th>
+              <th>Service Area / Type</th>
               <th>Priority</th>
               <th>Status</th>
               <th>Assignee</th>
