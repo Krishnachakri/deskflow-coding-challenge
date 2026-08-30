@@ -422,7 +422,7 @@ app.post('/api/tickets', (req, res) => {
 
   // Dispatch Notification
   if (assignedAgentId) {
-    sendNotification(ticketId, 'ASSIGNED', assignedAgentId, `New Incident ${ticketId} assigned to you.`, simulatedTime);
+    sendNotification(ticketId, 'ASSIGNED', assignedAgentId, `New Incident ${ticketId} assigned to you.`, createdDate.toISOString());
   }
 
   res.status(201).json({ ticketId, message: `Incident ${ticketId} created successfully.`, assignedAgentId });
@@ -642,8 +642,8 @@ app.patch('/api/tickets/:id/state', (req, res) => {
   if (state === 'RESOLVED' && resolutionNotes) {
     db.prepare(`
       INSERT INTO conversation_entries (id, ticket_id, actor_id, entry_type, content, created_at)
-      VALUES (?, ?, ?, 'RESOLVED_SUMMARY', ?, ?)
-    `).run(`conv-res-${Date.now()}`, ticket.id, actorId, resolutionNotes, simulatedTime);
+      VALUES (?, ?, ?, 'AGENT_REQUEST', ?, ?)
+    `).run(`conv-res-${Date.now()}`, ticket.id, actorId, `Resolution Summary: ${resolutionNotes}`, simulatedTime);
   }
 
   // Log activity

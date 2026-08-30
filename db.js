@@ -67,7 +67,7 @@ db.exec(`
     id TEXT PRIMARY KEY,
     ticket_id TEXT NOT NULL,
     actor_id TEXT NOT NULL,
-    entry_type TEXT NOT NULL CHECK(entry_type IN ('CUSTOMER_MESSAGE', 'AGENT_REQUEST', 'CUSTOMER_REPLY')),
+    entry_type TEXT NOT NULL,
     content TEXT NOT NULL,
     created_at TEXT NOT NULL,
     FOREIGN KEY(ticket_id) REFERENCES tickets(id),

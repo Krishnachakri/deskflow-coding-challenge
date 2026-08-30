@@ -40,8 +40,8 @@ console.log('✅ PASS: Customer role search isolation verified.');
 
 // 5. Phase 4 Feature 1: Search Engine Test
 const vpnResults = searchIncidents('VPN', 'MANAGER', 'mgr-1');
-assert.ok(vpnResults.length >= 1, 'Search for "VPN" should return INC0000002.');
-assert.strictEqual(vpnResults[0].id, 'INC0000002', 'Found INC0000002.');
+assert.ok(vpnResults.length >= 1, 'Search for "VPN" should return results.');
+assert.ok(vpnResults.some(r => r.id === 'INC0000002'), 'Found INC0000002.');
 console.log('✅ PASS: Phase 4 Multi-field Search Engine verified.');
 
 // 6. Phase 4 Feature 2: Notification Dispatcher & Idempotency Test

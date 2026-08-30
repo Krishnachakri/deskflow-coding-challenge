@@ -29,11 +29,7 @@ assert.strictEqual(hardwareP2Agent, 'agent-1', 'HARDWARE + P2 should match Rule 
 console.log('✅ PASS: Auto-assignment engine correctly routes tickets based on category and priority.');
 
 // 4. Test SLA Business Hours Math (Friday 15:00 + 4 working hours -> Monday 11:00)
-const fri3pm = new Date();
-fri3pm.setHours(15, 0, 0, 0);
-while (fri3pm.getDay() !== 5) {
-  fri3pm.setDate(fri3pm.getDate() + 1);
-}
+const fri3pm = new Date('2026-08-28T15:00:00.000');
 const dueMon = addBusinessMinutes(fri3pm, 240); // +4 working hours
 assert.strictEqual(dueMon.getDay(), 1, 'Due date should be Monday.');
 assert.strictEqual(dueMon.getHours(), 11, 'Due time should be 11:00 AM on Monday.');
