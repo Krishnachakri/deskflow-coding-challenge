@@ -45,8 +45,9 @@ function seedDemoTickets(force = false) {
   const insertTicket = db.prepare(`
     INSERT INTO tickets (
       id, title, description, service_area, service_type, category, priority, state, customer_id, agent_id, 
-      created_at, response_due_at, resolution_due_at, responded_at, resolved_at, closed_at, is_escalated, resolution_notes, info_requested
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      created_at, response_due_at, resolution_due_at, responded_at, resolved_at, closed_at, is_escalated, resolution_notes, info_requested,
+      requires_manager_approval, approval_status, approval_reason
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   const insertActivity = db.prepare(`
@@ -59,7 +60,7 @@ function seedDemoTickets(force = false) {
     VALUES (?, ?, ?, ?, ?)
   `);
 
-  // 1. INC0000001 (Hardware & Devices - P2 - AT_RISK & Escalated)
+  // 1. INC0000001 (Hardware & Devices - P2 - AT_RISK & Escalated + Pending Approval)
   const ticket1Created = new Date(now.getTime() - (3 * 60 * 60 * 1000 + 15 * 60 * 1000));
   const ticket1ResponseDue = addBusinessMinutes(now, 45).toISOString();
   const ticket1ResolutionDue = addBusinessMinutes(now, 12 * 60).toISOString();
@@ -67,7 +68,8 @@ function seedDemoTickets(force = false) {
   insertTicket.run(
     'INC0000001', 'Laptop display screen flickering randomly', 'Display goes black every few minutes when connected to external monitor.',
     'Hardware & Devices', 'Hardware Repair/Replacement', 'HARDWARE', 'P2', 'IN_PROGRESS', 'cust-1', 'agent-1',
-    ticket1Created.toISOString(), ticket1ResponseDue, ticket1ResolutionDue, null, null, null, 1, null, null
+    ticket1Created.toISOString(), ticket1ResponseDue, ticket1ResolutionDue, null, null, null, 1, null, null,
+    1, 'PENDING', 'Hardware replacement cost ($650) exceeds default agent authorization threshold.'
   );
 
   insertActivity.run('act-001a', 'INC0000001', 'cust-1', 'CREATED', 'Incident INC0000001 raised by Carol Customer', ticket1Created.toISOString());
@@ -82,7 +84,8 @@ function seedDemoTickets(force = false) {
   insertTicket.run(
     'INC0000002', 'VPN authentication failing for remote users', 'Unable to connect to internal corporate portal after security patch.',
     'Software Services', 'Application Failure', 'SOFTWARE', 'P1', 'IN_PROGRESS', 'cust-1', 'agent-2',
-    ticket2Created.toISOString(), ticket2ResponseDue, ticket2ResolutionDue, null, null, null, 1, null, null
+    ticket2Created.toISOString(), ticket2ResponseDue, ticket2ResolutionDue, null, null, null, 1, null, null,
+    0, 'NONE', null
   );
 
   insertActivity.run('act-002a', 'INC0000002', 'cust-1', 'CREATED', 'Incident INC0000002 raised by Carol Customer', ticket2Created.toISOString());
@@ -97,7 +100,8 @@ function seedDemoTickets(force = false) {
   insertTicket.run(
     'INC0000003', 'SSO Login Session Expiration Error', 'Users are logged out every 5 minutes unexpectedly.',
     'Software Services', 'Account Access & Permissions', 'SOFTWARE', 'P3', 'IN_PROGRESS', 'cust-1', 'agent-1',
-    ticket3Created.toISOString(), ticket3ResponseDue, ticket3ResolutionDue, new Date(now.getTime() - (15 * 60 * 1000)).toISOString(), null, null, 0, null, null
+    ticket3Created.toISOString(), ticket3ResponseDue, ticket3ResolutionDue, new Date(now.getTime() - (15 * 60 * 1000)).toISOString(), null, null, 0, null, null,
+    0, 'NONE', null
   );
 
   insertActivity.run('act-003a', 'INC0000003', 'cust-1', 'CREATED', 'Incident INC0000003 raised by Carol Customer', ticket3Created.toISOString());
@@ -110,7 +114,8 @@ function seedDemoTickets(force = false) {
   insertTicket.run(
     'INC0000004', 'Discrepancy in monthly compliance billing invoice', 'Invoice #9021 contains incorrect user seat count.',
     'Billing & Subscriptions', 'Invoice & Payment Discrepancy', 'BILLING', 'P2', 'PENDING_CUSTOMER', 'cust-1', 'agent-1',
-    ticket4Created.toISOString(), ticket4ResponseDue, ticket4ResolutionDue, new Date(now.getTime() - (1 * 60 * 60 * 1000)).toISOString(), null, null, 0, null, 'Please send the PO number and transaction receipt.'
+    ticket4Created.toISOString(), ticket4ResponseDue, ticket4ResolutionDue, new Date(now.getTime() - (1 * 60 * 60 * 1000)).toISOString(), null, null, 0, null, 'Please send the PO number and transaction receipt.',
+    0, 'NONE', null
   );
 
   insertActivity.run('act-004a', 'INC0000004', 'cust-1', 'CREATED', 'Incident INC0000004 raised by Carol Customer', ticket4Created.toISOString());
@@ -123,7 +128,8 @@ function seedDemoTickets(force = false) {
   insertTicket.run(
     'INC0000005', 'Secondary DNS Failover Latency Spike', 'Intermittent timeout on regional DNS resolution.',
     'Infrastructure & Network', 'System Configuration', 'HARDWARE', 'P3', 'RESOLVED', 'cust-2', 'agent-2',
-    ticket5Created.toISOString(), ticket5ResponseDue, ticket5ResolutionDue, new Date(now.getTime() - (4 * 60 * 60 * 1000)).toISOString(), new Date(now.getTime() - (30 * 60 * 1000)).toISOString(), null, 0, 'Flushed DNS cache and updated BGP routing policy to secondary node.', null
+    ticket5Created.toISOString(), ticket5ResponseDue, ticket5ResolutionDue, new Date(now.getTime() - (4 * 60 * 60 * 1000)).toISOString(), new Date(now.getTime() - (30 * 60 * 1000)).toISOString(), null, 0, 'Flushed DNS cache and updated BGP routing policy to secondary node.', null,
+    0, 'NONE', null
   );
 
   insertActivity.run('act-005a', 'INC0000005', 'cust-2', 'CREATED', 'Incident INC0000005 raised by Charlie Customer', ticket5Created.toISOString());
@@ -136,7 +142,8 @@ function seedDemoTickets(force = false) {
   insertTicket.run(
     'INC0000006', 'Request for analytics export permission', 'Need CSV dump access for Q3 compliance report.',
     'Software Services', 'Application Failure', 'SOFTWARE', 'P4', 'CLOSED', 'cust-1', 'agent-1',
-    ticket6Created.toISOString(), ticket6ResponseDue, ticket6ResolutionDue, new Date(now.getTime() - (20 * 60 * 60 * 1000)).toISOString(), new Date(now.getTime() - (10 * 60 * 60 * 1000)).toISOString(), new Date(now.getTime() - (5 * 60 * 60 * 1000)).toISOString(), 0, 'Granted read-only analytics role in security console.', null
+    ticket6Created.toISOString(), ticket6ResponseDue, ticket6ResolutionDue, new Date(now.getTime() - (20 * 60 * 60 * 1000)).toISOString(), new Date(now.getTime() - (10 * 60 * 60 * 1000)).toISOString(), new Date(now.getTime() - (5 * 60 * 60 * 1000)).toISOString(), 0, 'Granted read-only analytics role in security console.', null,
+    0, 'NONE', null
   );
 
   insertActivity.run('act-006a', 'INC0000006', 'cust-1', 'CREATED', 'Incident INC0000006 raised by Carol Customer', ticket6Created.toISOString());
@@ -149,7 +156,8 @@ function seedDemoTickets(force = false) {
   insertTicket.run(
     'INC0000007', 'Request for dual monitor DisplayPort cable', 'Workstation setup requires replacement 4K DP cable.',
     'Hardware & Devices', 'Hardware Repair/Replacement', 'HARDWARE', 'P4', 'NEW', 'cust-2', 'agent-2',
-    ticket7Created.toISOString(), ticket7ResponseDue, ticket7ResolutionDue, null, null, null, 0, null, null
+    ticket7Created.toISOString(), ticket7ResponseDue, ticket7ResolutionDue, null, null, null, 0, null, null,
+    0, 'NONE', null
   );
 
   insertActivity.run('act-007a', 'INC0000007', 'cust-2', 'CREATED', 'Incident INC0000007 raised by Charlie Customer', ticket7Created.toISOString());

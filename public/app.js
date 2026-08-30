@@ -199,7 +199,8 @@ function navigateSidebar(tabName, filterVal) {
       'CLOSED': 'sbIncClosed',
       'AT_RISK': 'sbIncAtRisk',
       'OVERDUE': 'sbIncOverdue',
-      'ESCALATED': 'sbIncEscalated'
+      'ESCALATED': 'sbIncEscalated',
+      'APPROVALS': 'sbIncApprovals'
     };
     const activeBtnId = btnIdMap[filterSelect.value];
     if (activeBtnId && tabName === 'queue') {
@@ -632,6 +633,8 @@ function updateSidebarCounts(tickets) {
   document.getElementById('cntAtRisk').innerText = tickets.filter(t => t.sla_state === 'AT_RISK').length;
   document.getElementById('cntOverdue').innerText = tickets.filter(t => t.sla_state === 'OVERDUE').length;
   document.getElementById('cntEscalated').innerText = tickets.filter(t => t.is_escalated === 1).length;
+  const cntApp = document.getElementById('cntApprovals');
+  if (cntApp) cntApp.innerText = tickets.filter(t => t.approval_status === 'PENDING').length;
 }
 
 function renderTicketsList(tickets, customTitle) {
@@ -859,6 +862,34 @@ async function inspectTicket(ticketId) {
   const isManager = currentUser.role === 'MANAGER';
   document.getElementById('managerReassignBox').classList.toggle('hidden', !isManager);
 
+  // Manager Approval Banner & Controls
+  const appBannerBox = document.getElementById('approvalBannerBox');
+  const appStatusBadge = document.getElementById('modalApprovalStatusBadge');
+  const appReasonText = document.getElementById('modalApprovalReasonText');
+  const mgrAppControls = document.getElementById('managerApprovalControls');
+
+  if (ticket.approval_status && ticket.approval_status !== 'NONE') {
+    appBannerBox.classList.remove('hidden');
+    appReasonText.innerText = ticket.approval_reason ? `Reason: "${ticket.approval_reason}"` : '';
+
+    if (ticket.approval_status === 'PENDING') {
+      appStatusBadge.innerText = 'PENDING MANAGER APPROVAL';
+      appStatusBadge.style.background = '#8b5cf6';
+      mgrAppControls.classList.toggle('hidden', !isManager);
+    } else if (ticket.approval_status === 'APPROVED') {
+      appStatusBadge.innerText = '✅ APPROVED BY MANAGER';
+      appStatusBadge.style.background = '#059669';
+      mgrAppControls.classList.add('hidden');
+    } else if (ticket.approval_status === 'REJECTED') {
+      appStatusBadge.innerText = '❌ APPROVAL REJECTED';
+      appStatusBadge.style.background = '#dc2626';
+      mgrAppControls.classList.add('hidden');
+    }
+  } else {
+    appBannerBox.classList.add('hidden');
+    mgrAppControls.classList.add('hidden');
+  }
+
   // Action Buttons Matrix
   const actionsDiv = document.getElementById('modalActionButtons');
   actionsDiv.innerHTML = '';
@@ -869,6 +900,9 @@ async function inspectTicket(ticketId) {
     }
     if (ticket.state === 'NEW' || ticket.state === 'IN_PROGRESS' || ticket.state === 'PENDING_CUSTOMER') {
       actionsDiv.innerHTML += `<button onclick="openRequestInfoModal()" class="btn-primary" style="background:#d97706;">💬 Request Information</button>`;
+      if (ticket.approval_status !== 'PENDING') {
+        actionsDiv.innerHTML += `<button onclick="openRequestApprovalModal()" class="btn-primary" style="background:#7c3aed;">🛡️ Request Manager Approval</button>`;
+      }
     }
     if (ticket.state === 'IN_PROGRESS' || ticket.state === 'PENDING_CUSTOMER') {
       actionsDiv.innerHTML += `<button onclick="openResolveModal()" class="btn-primary" style="background:var(--status-normal);">Mark Resolved</button>`;
@@ -1101,4 +1135,66 @@ async function handleDeleteRule(ruleId) {
     return;
   }
   await loadRules();
+}
+
+// Manager Approval Workflow Modal Handlers
+function openRequestApprovalModal() {
+  const input = document.getElementById('approvalReasonInput');
+  if (input) input.value = '';
+  document.getElementById('requestApprovalModal').classList.remove('hidden');
+}
+
+function closeRequestApprovalModal() {
+  document.getElementById('requestApprovalModal').classList.add('hidden');
+}
+
+async function submitRequestApproval() {
+  const reason = document.getElementById('approvalReasonInput').value;
+  if (!reason || !reason.trim()) {
+    alert('Please enter a reason for requesting Manager Approval.');
+    return;
+  }
+
+  const res = await fetch(`/api/tickets/${activeTicketId}/request-approval`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${authToken}`
+    },
+    body: JSON.stringify({ reason })
+  });
+
+  const data = await res.json();
+  if (!res.ok) {
+    alert(data.error || 'Failed to request manager approval.');
+    return;
+  }
+
+  closeRequestApprovalModal();
+  alert('Manager approval requested successfully!');
+  await inspectTicket(activeTicketId);
+  await refreshAll();
+}
+
+async function submitApprovalDecision(decision) {
+  const noteInput = document.getElementById('approvalDecisionNote');
+  const note = noteInput ? noteInput.value : '';
+  const res = await fetch(`/api/tickets/${activeTicketId}/decide-approval`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${authToken}`
+    },
+    body: JSON.stringify({ decision, note })
+  });
+
+  const data = await res.json();
+  if (!res.ok) {
+    alert(data.error || 'Failed to submit approval decision.');
+    return;
+  }
+
+  alert(`Manager approval request ${decision.toLowerCase()} successfully!`);
+  await inspectTicket(activeTicketId);
+  await refreshAll();
 }

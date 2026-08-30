@@ -80,6 +80,10 @@
               <span style="color:#7c3aed;">⚡ Escalated</span>
               <span id="cntEscalated" class="sidebar-badge" style="background:#7c3aed; color:#fff;">0</span>
             </button>
+            <button id="sbIncApprovals" class="sidebar-btn sidebar-subitem" onclick="navigateSidebar('queue', 'APPROVALS')">
+              <span style="color:#8b5cf6;">🛡️ Approvals</span>
+              <span id="cntApprovals" class="sidebar-badge" style="background:#8b5cf6; color:#fff;">0</span>
+            </button>
           </div>
 
           <!-- Dropdown Section: Categories -->
@@ -273,6 +277,7 @@
                 <option value="AT_RISK">At Risk Only</option>
                 <option value="OVERDUE">Overdue Only</option>
                 <option value="ESCALATED">Auto-Escalated Only</option>
+                <option value="APPROVALS">Pending Approval Only</option>
               </select>
             </div>
           </div>
@@ -600,6 +605,40 @@
               </div>
             </div>
           </div>
+
+          <!-- Manager Approval Status & Action Banner -->
+          <div id="approvalBannerBox" class="context-box hidden" style="background:rgba(139, 92, 246, 0.08); border:2px solid #8b5cf6; margin-top:16px;">
+            <h4 style="color:#7c3aed; margin-bottom:6px;">🛡️ MANAGER APPROVAL WORKFLOW</h4>
+            <p style="font-size:0.85rem; margin-bottom:6px;"><strong>Approval Status:</strong> <span id="modalApprovalStatusBadge" class="badge" style="background:#8b5cf6; color:#fff;">PENDING APPROVAL</span></p>
+            <p id="modalApprovalReasonText" style="font-size:0.82rem; color:var(--text-main); margin-bottom:10px; font-weight:600;"></p>
+            
+            <!-- Decision Controls for Manager -->
+            <div id="managerApprovalControls" class="hidden" style="display:flex; flex-direction:column; gap:8px;">
+              <input type="text" id="approvalDecisionNote" placeholder="Optional decision note/reason..." style="font-size:0.82rem; padding:6px; border:1px solid #c4b5fd; border-radius:4px;">
+              <div style="display:flex; gap:8px;">
+                <button onclick="submitApprovalDecision('APPROVED')" class="btn-primary" style="background:#059669; flex:1; padding:6px 8px;">✅ Approve Request</button>
+                <button onclick="submitApprovalDecision('REJECTED')" class="btn-primary" style="background:#dc2626; flex:1; padding:6px 8px;">❌ Reject Request</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Dialog: Agent Request Manager Approval -->
+  <div id="requestApprovalModal" class="modal-overlay hidden">
+    <div class="modal-container" style="max-width:480px;">
+      <div class="modal-header">
+        <h3 style="color:#7c3aed;">🛡️ Request Manager Approval</h3>
+        <button onclick="closeRequestApprovalModal()" class="modal-close-btn">&times;</button>
+      </div>
+      <div class="modal-body" style="padding:16px;">
+        <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom:12px;">Specify the reason or authorization request details for Manager review (e.g. cost approval, high-impact changes, or policy exceptions):</p>
+        <textarea id="approvalReasonInput" rows="4" placeholder="Describe why Manager Approval is required for this incident..." style="width:100%; border:1px solid var(--border-focus); padding:8px; border-radius:6px; font-size:0.88rem; margin-bottom:16px;"></textarea>
+        <div style="display:flex; justify-content:flex-end; gap:8px;">
+          <button onclick="closeRequestApprovalModal()" class="btn-demo-action">Cancel</button>
+          <button onclick="submitRequestApproval()" class="btn-primary" style="background:#7c3aed;">Submit for Manager Approval</button>
         </div>
       </div>
     </div>

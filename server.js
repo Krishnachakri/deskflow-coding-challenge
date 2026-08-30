@@ -299,6 +299,8 @@ app.get('/api/tickets', (req, res) => {
     filteredTickets = evaluatedTickets.filter(t => t.sla_state === 'OVERDUE');
   } else if (filter === 'ESCALATED') {
     filteredTickets = evaluatedTickets.filter(t => t.is_escalated === 1);
+  } else if (filter === 'APPROVALS') {
+    filteredTickets = evaluatedTickets.filter(t => t.approval_status === 'PENDING');
   } else if (filter === 'OPEN') {
     filteredTickets = evaluatedTickets.filter(t => t.state !== 'CLOSED');
   }
@@ -512,6 +514,77 @@ app.post('/api/tickets/:id/customer-reply', (req, res) => {
   }
 
   res.json({ message: 'Response submitted successfully. Status updated to In Progress.', state: 'IN_PROGRESS' });
+});
+
+// ------------------------------------------------------------
+// 5B. MANAGER APPROVAL WORKFLOW APIS
+// ------------------------------------------------------------
+
+app.post('/api/tickets/:id/request-approval', (req, res) => {
+  const authUser = getAuthUser(req);
+  if (!authUser || (authUser.role !== 'AGENT' && authUser.role !== 'MANAGER')) {
+    return res.status(403).json({ error: 'FORBIDDEN: Only Agents and Managers can request manager approval.' });
+  }
+
+  const { reason } = req.body;
+  if (!reason || !reason.trim()) {
+    return res.status(400).json({ error: 'Approval request reason is required.' });
+  }
+
+  const ticket = db.prepare('SELECT * FROM tickets WHERE id = ?').get(req.params.id);
+  if (!ticket) return res.status(404).json({ error: 'Ticket not found' });
+
+  const nowStr = new Date().toISOString();
+  db.prepare(`
+    UPDATE tickets 
+    SET requires_manager_approval = 1, approval_status = 'PENDING', approval_reason = ? 
+    WHERE id = ?
+  `).run(reason.trim(), ticket.id);
+
+  db.prepare(`
+    INSERT INTO activity_logs (id, ticket_id, actor_id, activity_type, content, created_at)
+    VALUES (?, ?, ?, 'APPROVAL_REQUESTED', ?, ?)
+  `).run(`act-app-${Date.now()}`, ticket.id, authUser.id, `Requested Manager Approval: "${reason.trim()}"`, nowStr);
+
+  sendNotification(ticket.id, 'APPROVAL_REQUESTED', 'mgr-1', `Agent ${authUser.name} requested Manager Approval for Incident ${ticket.id}`, nowStr);
+
+  res.json({ message: 'Manager approval requested successfully.', approval_status: 'PENDING' });
+});
+
+app.post('/api/tickets/:id/decide-approval', (req, res) => {
+  const authUser = getAuthUser(req);
+  if (!authUser || authUser.role !== 'MANAGER') {
+    return res.status(403).json({ error: 'FORBIDDEN: Only Manager role can approve or reject approval requests.' });
+  }
+
+  const { decision, note } = req.body;
+  if (!['APPROVED', 'REJECTED'].includes(decision)) {
+    return res.status(400).json({ error: 'Decision must be APPROVED or REJECTED.' });
+  }
+
+  const ticket = db.prepare('SELECT * FROM tickets WHERE id = ?').get(req.params.id);
+  if (!ticket) return res.status(404).json({ error: 'Ticket not found' });
+
+  const nowStr = new Date().toISOString();
+  db.prepare(`
+    UPDATE tickets 
+    SET approval_status = ?, approval_decided_by = ?, approval_decided_at = ? 
+    WHERE id = ?
+  `).run(decision, authUser.id, nowStr, ticket.id);
+
+  const actionText = decision === 'APPROVED' ? 'APPROVED manager approval request' : 'REJECTED manager approval request';
+  const detailText = note ? `: "${note.trim()}"` : '';
+
+  db.prepare(`
+    INSERT INTO activity_logs (id, ticket_id, actor_id, activity_type, content, created_at)
+    VALUES (?, ?, ?, 'APPROVAL_DECISION', ?, ?)
+  `).run(`act-dec-${Date.now()}`, ticket.id, authUser.id, `Manager ${authUser.name} ${actionText}${detailText}`, nowStr);
+
+  if (ticket.agent_id) {
+    sendNotification(ticket.id, `APPROVAL_${decision}`, ticket.agent_id, `Manager ${authUser.name} ${decision} approval request for Incident ${ticket.id}`, nowStr);
+  }
+
+  res.json({ message: `Manager approval request ${decision.toLowerCase()} successfully.`, approval_status: decision });
 });
 
 // ------------------------------------------------------------

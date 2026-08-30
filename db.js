@@ -54,6 +54,11 @@ db.exec(`
     is_escalated INTEGER NOT NULL DEFAULT 0,
     resolution_notes TEXT,
     info_requested TEXT,
+    requires_manager_approval INTEGER DEFAULT 0,
+    approval_status TEXT DEFAULT 'NONE' CHECK(approval_status IN ('NONE', 'PENDING', 'APPROVED', 'REJECTED')),
+    approval_reason TEXT,
+    approval_decided_by TEXT,
+    approval_decided_at TEXT,
     FOREIGN KEY(customer_id) REFERENCES users(id),
     FOREIGN KEY(agent_id) REFERENCES users(id)
   );
@@ -119,6 +124,11 @@ try { db.exec('ALTER TABLE users ADD COLUMN password_hash TEXT'); } catch (e) {}
 try { db.exec('ALTER TABLE tickets ADD COLUMN info_requested TEXT'); } catch (e) {}
 try { db.exec("ALTER TABLE tickets ADD COLUMN service_area TEXT DEFAULT 'Software Services'"); } catch (e) {}
 try { db.exec("ALTER TABLE tickets ADD COLUMN service_type TEXT DEFAULT 'Application Failure'"); } catch (e) {}
+try { db.exec("ALTER TABLE tickets ADD COLUMN requires_manager_approval INTEGER DEFAULT 0"); } catch (e) {}
+try { db.exec("ALTER TABLE tickets ADD COLUMN approval_status TEXT DEFAULT 'NONE'"); } catch (e) {}
+try { db.exec("ALTER TABLE tickets ADD COLUMN approval_reason TEXT"); } catch (e) {}
+try { db.exec("ALTER TABLE tickets ADD COLUMN approval_decided_by TEXT"); } catch (e) {}
+try { db.exec("ALTER TABLE tickets ADD COLUMN approval_decided_at TEXT"); } catch (e) {}
 try { db.exec('ALTER TABLE assignment_rules ADD COLUMN use_workload_balance INTEGER NOT NULL DEFAULT 0'); } catch (e) {}
 
 module.exports = db;
