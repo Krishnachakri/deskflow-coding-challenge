@@ -223,11 +223,14 @@ async function refreshAll() {
 
 // Time Simulation Functions
 async function updateSimTime() {
-  const res = await fetch('/api/system-config');
-  const config = await res.json();
-  const dateObj = new Date(config.simulatedTime);
-  document.getElementById('simTimeDisplay').innerText = 
-    `${dateObj.toLocaleDateString()} ${dateObj.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} (+${config.offsetHours}h)`;
+  const el = document.getElementById('simTimeDisplay');
+  if (!el) return;
+  try {
+    const res = await fetch('/api/system-config');
+    const config = await res.json();
+    const dateObj = new Date(config.simulatedTime);
+    el.innerText = `${dateObj.toLocaleDateString()} ${dateObj.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} (+${config.offsetHours}h)`;
+  } catch (e) {}
 }
 
 async function fastForwardTime(hours) {
@@ -399,15 +402,30 @@ function getUIStateLabel(state) {
 
 // Load Incidents Queue Table
 async function loadTickets() {
-  const filter = document.getElementById('ticketFilterSelect').value;
-  const url = `/api/tickets?filter=${filter}`;
-  const res = await fetch(url, {
+  const res = await fetch('/api/tickets?filter=ALL', {
     headers: { 'Authorization': `Bearer ${authToken}` }
   });
-  const tickets = await res.json();
-  activeTicketsCache = tickets;
-  updateSidebarCounts(tickets);
-  renderTicketsList(tickets);
+  const allTickets = await res.json();
+  activeTicketsCache = allTickets;
+
+  // Sidebar counts ALWAYS reflect the complete unfiltered set of tickets for the user
+  updateSidebarCounts(allTickets);
+
+  // Filter for current table view
+  const filter = document.getElementById('ticketFilterSelect').value;
+  let filteredTickets = allTickets;
+
+  if (['NEW', 'IN_PROGRESS', 'PENDING_CUSTOMER', 'RESOLVED', 'CLOSED'].includes(filter)) {
+    filteredTickets = allTickets.filter(t => t.state === filter);
+  } else if (filter === 'AT_RISK') {
+    filteredTickets = allTickets.filter(t => t.sla_state === 'AT_RISK');
+  } else if (filter === 'OVERDUE') {
+    filteredTickets = allTickets.filter(t => t.sla_state === 'OVERDUE');
+  } else if (filter === 'ESCALATED') {
+    filteredTickets = allTickets.filter(t => t.is_escalated === 1);
+  }
+
+  renderTicketsList(filteredTickets);
 }
 
 async function loadTicketsByCategory(category) {
