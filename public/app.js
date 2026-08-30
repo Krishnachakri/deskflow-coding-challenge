@@ -571,6 +571,13 @@ async function inspectTicket(ticketId) {
             <div>${c.content}</div>
           </div>
         `;
+      } else if (c.entry_type === 'RESOLVED_SUMMARY') {
+        convHtml += `
+          <div class="conversation-bubble" style="background:var(--brand-green-bg); border:1px solid rgba(39, 143, 90, 0.3); border-left:4px solid var(--brand-green);">
+            <div class="bubble-meta" style="color:var(--brand-green);">✅ ${c.actor_name || 'Support Agent'} • Resolution Summary</div>
+            <div>${c.content}</div>
+          </div>
+        `;
       }
     });
   }
@@ -585,6 +592,15 @@ async function inspectTicket(ticketId) {
     document.getElementById('infoRequestPromptText').innerText = `"${ticket.info_requested}"`;
   } else {
     infoCard.classList.add('hidden');
+  }
+
+  // Render Prominent Resolution Notes Card (Visible to Customer & Agent)
+  const resCard = document.getElementById('resolutionNotesCard');
+  if (ticket.resolution_notes) {
+    resCard.classList.remove('hidden');
+    document.getElementById('resolutionNotesText').innerText = `"${ticket.resolution_notes}"`;
+  } else {
+    resCard.classList.add('hidden');
   }
 
   // Render Internal Work Notes (Strictly Hidden from Customer role)
@@ -626,8 +642,8 @@ async function inspectTicket(ticketId) {
     if (ticket.state === 'NEW' || ticket.state === 'IN_PROGRESS' || ticket.state === 'PENDING_CUSTOMER') {
       actionsDiv.innerHTML += `<button onclick="openRequestInfoModal()" class="btn-primary" style="background:#d97706;">💬 Request Information</button>`;
     }
-    if (ticket.state === 'IN_PROGRESS') {
-      actionsDiv.innerHTML += `<button onclick="submitStateChange('RESOLVED')" class="btn-primary" style="background:var(--status-normal);">Mark Resolved</button>`;
+    if (ticket.state === 'IN_PROGRESS' || ticket.state === 'PENDING_CUSTOMER') {
+      actionsDiv.innerHTML += `<button onclick="openResolveModal()" class="btn-primary" style="background:var(--status-normal);">Mark Resolved</button>`;
     }
   } else if (currentUser.role === 'CUSTOMER' && ticket.state === 'RESOLVED') {
     actionsDiv.innerHTML += `<button onclick="submitStateChange('CLOSED')" class="btn-primary" style="background:var(--status-normal);">Confirm & Close</button>`;
@@ -727,12 +743,31 @@ async function submitWorkNote() {
   await inspectTicket(activeTicketId);
 }
 
+function openResolveModal() {
+  document.getElementById('resolutionNoteInput').value = '';
+  document.getElementById('resolveTicketModal').classList.remove('hidden');
+}
+
+function closeResolveModal() {
+  document.getElementById('resolveTicketModal').classList.add('hidden');
+}
+
+async function submitResolveWithNotes() {
+  const resolutionNotes = document.getElementById('resolutionNoteInput').value.trim();
+  if (!resolutionNotes) {
+    alert('Please enter resolution notes explaining how the issue was resolved.');
+    return;
+  }
+  closeResolveModal();
+  await submitStateChange('RESOLVED', resolutionNotes);
+}
+
 // Submit State Change
-async function submitStateChange(state) {
-  let resolutionNotes = null;
-  if (state === 'RESOLVED') {
-    resolutionNotes = prompt('Enter Resolution Notes (required to resolve):', 'Issue verified and resolved successfully.');
-    if (!resolutionNotes) return;
+async function submitStateChange(state, customResolutionNotes) {
+  let resolutionNotes = customResolutionNotes || null;
+  if (state === 'RESOLVED' && !resolutionNotes) {
+    openResolveModal();
+    return;
   }
 
   const res = await fetch(`/api/tickets/${activeTicketId}/state`, {

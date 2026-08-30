@@ -171,17 +171,6 @@
               </svg>
             </span>
           </button>
-
-          <!-- Demo Time Simulator Bar -->
-          <div class="demo-time-box">
-            <span>⏱️ Demo Time:</span>
-            <span id="simTimeDisplay" class="time-val">--:--</span>
-            <button class="btn-demo-action" onclick="fastForwardTime(1)">+1h</button>
-            <button class="btn-demo-action" onclick="fastForwardTime(4)">+4h</button>
-            <button class="btn-demo-action" onclick="fastForwardTime(24)">+1d</button>
-            <button class="btn-demo-action" onclick="fastForwardTime(48)">+2d</button>
-            <button class="btn-demo-action" onclick="resetTime()" style="background:#fee2e2; color:#dc2626;">Reset</button>
-          </div>
         </div>
       </header>
 
@@ -467,6 +456,21 @@
     </div>
   </div>
 
+  <!-- Resolve Ticket Modal for Agent / Manager -->
+  <div id="resolveTicketModal" class="modal-overlay hidden" style="z-index:200;">
+    <div class="login-card" style="max-width:500px;">
+      <h3 style="color:var(--brand-green); margin-bottom:10px;">✅ Mark Incident as Resolved</h3>
+      <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom:14px;">Provide resolution notes explaining the fix or solution provided to the customer.</p>
+      
+      <textarea id="resolutionNoteInput" rows="4" style="width:100%; padding:10px; border:1px solid var(--border-focus); border-radius:6px; font-size:0.9rem;" placeholder="e.g. Replaced damaged network cable, verified link speed, and confirmed connection with user..."></textarea>
+      
+      <div style="margin-top:16px; display:flex; justify-content:flex-end; gap:10px;">
+        <button onclick="closeResolveModal()" class="btn-demo-action" style="padding:8px 16px;">Cancel</button>
+        <button onclick="submitResolveWithNotes()" class="btn-primary" style="background:var(--brand-green); padding:8px 16px;">Confirm & Resolve</button>
+      </div>
+    </div>
+  </div>
+
   <!-- IMS Operational Workspace Modal -->
   <div id="ticketModal" class="modal-overlay hidden">
     <div class="modal-workspace">
@@ -501,6 +505,13 @@
                 <button onclick="submitCustomerReply()" class="btn-primary" style="background:#d97706;">Submit Information Response</button>
               </div>
             </div>
+          </div>
+
+          <!-- Prominent Resolution Summary & Solution Details Card (Customer & Agent View) -->
+          <div id="resolutionNotesCard" class="context-box hidden" style="background:var(--brand-green-bg); border:2px solid rgba(39, 143, 90, 0.3);">
+            <h4 style="color:var(--brand-green); margin-bottom:6px;">✅ RESOLUTION SUMMARY & SOLUTION DETAILS</h4>
+            <p id="resolutionNotesText" style="font-size:0.9rem; font-weight:600; color:var(--text-main); margin-bottom:6px;"></p>
+            <div style="font-size:0.75rem; color:var(--text-muted);">Provided by Support Team upon resolving this incident.</div>
           </div>
 
           <!-- Internal Work Notes (Strictly Hidden from Customer role) -->

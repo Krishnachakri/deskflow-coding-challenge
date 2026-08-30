@@ -557,13 +557,20 @@ app.patch('/api/tickets/:id/state', (req, res) => {
   db.prepare('UPDATE tickets SET state = ?, responded_at = ?, resolved_at = ?, closed_at = ?, resolution_notes = COALESCE(?, resolution_notes) WHERE id = ?')
     .run(state, respondedAt, resolvedAt, closedAt, resolutionNotes || null, ticket.id);
 
+  if (state === 'RESOLVED' && resolutionNotes) {
+    db.prepare(`
+      INSERT INTO conversation_entries (id, ticket_id, actor_id, entry_type, content, created_at)
+      VALUES (?, ?, ?, 'RESOLVED_SUMMARY', ?, ?)
+    `).run(`conv-res-${Date.now()}`, ticket.id, actorId, resolutionNotes, simulatedTime);
+  }
+
   // Log activity
   db.prepare(`
     INSERT INTO activity_logs (id, ticket_id, actor_id, activity_type, content, created_at)
     VALUES (?, ?, ?, 'STATE_CHANGE', ?, ?)
   `).run(
     `act-${Date.now()}`, ticket.id, actorId,
-    `Status changed to ${state}. ${comment ? 'Comment: ' + comment : ''}`,
+    `Status changed to ${state}. ${resolutionNotes ? 'Resolution Notes: ' + resolutionNotes : (comment ? 'Comment: ' + comment : '')}`,
     simulatedTime
   );
 
