@@ -129,6 +129,13 @@ try { db.exec("ALTER TABLE tickets ADD COLUMN approval_status TEXT DEFAULT 'NONE
 try { db.exec("ALTER TABLE tickets ADD COLUMN approval_reason TEXT"); } catch (e) {}
 try { db.exec("ALTER TABLE tickets ADD COLUMN approval_decided_by TEXT"); } catch (e) {}
 try { db.exec("ALTER TABLE tickets ADD COLUMN approval_decided_at TEXT"); } catch (e) {}
-try { db.exec('ALTER TABLE assignment_rules ADD COLUMN use_workload_balance INTEGER NOT NULL DEFAULT 0'); } catch (e) {}
+// Seed default company business holidays if empty
+const holidayCheck = db.prepare('SELECT COUNT(*) as count FROM holidays').get();
+if (holidayCheck.count === 0) {
+  const insertHol = db.prepare('INSERT OR IGNORE INTO holidays (id, holiday_date, name, is_active) VALUES (?, ?, ?, 1)');
+  insertHol.run('hol-1', '2026-09-07', 'Labor Day');
+  insertHol.run('hol-2', '2026-11-26', 'Thanksgiving Day');
+  insertHol.run('hol-3', '2026-12-25', 'Christmas Day');
+}
 
 module.exports = db;
